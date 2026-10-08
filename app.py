@@ -9,6 +9,12 @@ from groq import Groq
 
 st.set_page_config(page_title="PDF RAG Bot", page_icon="🤖")
 st.title("🤖 Chat with your PDF")
+st.caption("🚀 Developed by Muhammad Danish Haleem")
+
+# Sidebar par bhi credit add karne ke liye:
+st.sidebar.markdown("---")
+st.sidebar.markdown("👨‍💻 **Developer:** Muhammad Danish Haleem")
+st.sidebar.markdown("🎓 BSAI Student | University of Agriculture Peshawar")
 
 # 1. Groq Setup
 # Local test ke liye yahan apni key rakhein (Cloud par daalte waqt Secrets use karenge)
