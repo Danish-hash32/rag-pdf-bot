@@ -84,14 +84,13 @@ with col1:
     uploaded_file = st.file_uploader("Upload PDF Document", type=["pdf"])
 
 with col2:
-    st.write("") # Formatting space
+    st.write("") 
     st.write("")
     if st.button("🔄 Reset Chat", use_container_width=True):
         st.session_state.clear()
         st.rerun()
 
 if uploaded_file:
-    # Auto-Reset state when a new file is uploaded
     if "current_file" not in st.session_state or st.session_state.current_file != uploaded_file.name:
         st.session_state.current_file = uploaded_file.name
         st.session_state.chat_history = []
@@ -104,12 +103,10 @@ if uploaded_file:
         if "chat_history" not in st.session_state:
             st.session_state.chat_history = []
 
-        # Render Chat History
         for msg in st.session_state.chat_history:
             with st.chat_message(msg["role"]):
                 st.write(msg["content"])
 
-        # Chat Input Box
         user_query = st.chat_input("Ask a question regarding the uploaded PDF...")
 
         if user_query:
@@ -122,10 +119,10 @@ if uploaded_file:
             else:
                 with st.chat_message("assistant"):
                     with st.spinner("Searching document context and generating answer..."):
-                        # Active Stable Model
+                        # Corrected Active Groq Model Name
                         llm = ChatGroq(
                             groq_api_key=GROQ_API_KEY, 
-                            model_name="llama-3.3-70b-versatile"
+                            model_name="llama3-8b-8192"
                         )
                         
                         docs = st.session_state.retriever.invoke(user_query)
