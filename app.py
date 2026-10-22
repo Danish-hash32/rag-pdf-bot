@@ -11,21 +11,29 @@ from langchain_groq import ChatGroq
 # ---------------------------------------------------------
 # Page Configuration & Header
 # ---------------------------------------------------------
-st.set_page_config(page_title="PDF AI Assistant", page_icon="📄", layout="centered")
+st.set_page_config(page_title="DocuMind AI", page_icon="⚡", layout="centered")
 
-st.title("📄 Enterprise PDF AI Assistant")
-
-# Header Developer Banner
+# Sleek Dark-Mode Corporate Header Banner
 st.markdown("""
-    <div style="background-color:#1E293B; padding:12px; border-radius:8px; text-align:center; margin-bottom:20px;">
-        <p style="color:#38BDF8; font-size:16px; font-weight:bold; margin:0;">
-            🚀 Developed by Muhammad Danish Haleem
+    <div style="background: linear-gradient(135deg, #0F172A, #1E293B); padding: 18px; border-radius: 12px; border: 1px solid #334155; text-align: center; margin-bottom: 20px;">
+        <h2 style="color: #F8FAFC; margin: 0; font-family: sans-serif;">⚡ DocuMind AI</h2>
+        <p style="color: #38BDF8; font-size: 13px; margin: 4px 0 0 0; font-weight: 500;">
+            Enterprise Document Intelligence Workspace
         </p>
-        <p style="color:#94A3B8; font-size:13px; margin:0;">
-            BSAI Student | University of Agriculture Peshawar
+        <p style="color: #94A3B8; font-size: 12px; margin: 6px 0 0 0; font-weight: 600;">
+            🚀 Developed by Muhammad Danish Haleem | BSAI Student, UOA Peshawar
         </p>
     </div>
 """, unsafe_allow_html=True)
+
+# ---------------------------------------------------------
+# Sidebar
+# ---------------------------------------------------------
+st.sidebar.title("📌 System Overview")
+st.sidebar.markdown("👨‍💻 **Developer:** Muhammad Danish Haleem")
+st.sidebar.markdown("🎓 BSAI Student | University of Agriculture Peshawar")
+st.sidebar.markdown("---")
+st.sidebar.info("Upload any PDF document to perform instant semantic query retrieval and AI analysis.")
 
 # ---------------------------------------------------------
 # Environment Setup (Groq API Key)
@@ -47,7 +55,7 @@ def process_pdf(uploaded_file):
             os.remove(tmp_path)
 
         if not docs:
-            st.error("⚠️ Unable to extract text from this PDF. Please ensure the document is not an image-only scan.")
+            st.error("⚠️ Unable to extract text. Please verify that the PDF is not an image-only scan.")
             return None
 
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
@@ -64,17 +72,20 @@ def process_pdf(uploaded_file):
         if "cryptography" in str(e).lower() or "dependencyerror" in str(e).lower():
             st.error("🔒 The uploaded PDF is encrypted or password-protected.")
         else:
-            st.error(f"⚠️ Error processing PDF: {str(e)}")
+            st.error(f"⚠️ Error processing PDF document: {str(e)}")
         return None
 
 # ---------------------------------------------------------
-# Main Application UI & Logic
+# Main Interface & Controls
 # ---------------------------------------------------------
-uploaded_file = st.file_uploader("Upload a PDF document to begin", type=["pdf"])
-
-# Clear / Reset Button directly on Main Screen
 col1, col2 = st.columns([3, 1])
+
+with col1:
+    uploaded_file = st.file_uploader("Upload PDF Document", type=["pdf"])
+
 with col2:
+    st.write("") # Formatting space
+    st.write("")
     if st.button("🔄 Reset Chat", use_container_width=True):
         st.session_state.clear()
         st.rerun()
@@ -84,11 +95,11 @@ if uploaded_file:
     if "current_file" not in st.session_state or st.session_state.current_file != uploaded_file.name:
         st.session_state.current_file = uploaded_file.name
         st.session_state.chat_history = []
-        with st.spinner("Processing PDF document... Please wait."):
+        with st.spinner("Analyzing and indexing document structure..."):
             st.session_state.retriever = process_pdf(uploaded_file)
 
     if st.session_state.get("retriever"):
-        st.success("✅ Document processed successfully. You can now ask questions below.")
+        st.success("✅ Document processed and indexed. You may ask questions below.")
 
         if "chat_history" not in st.session_state:
             st.session_state.chat_history = []
@@ -99,7 +110,7 @@ if uploaded_file:
                 st.write(msg["content"])
 
         # Chat Input Box
-        user_query = st.chat_input("Ask a question about your uploaded document...")
+        user_query = st.chat_input("Ask a question regarding the uploaded PDF...")
 
         if user_query:
             st.session_state.chat_history.append({"role": "user", "content": user_query})
@@ -107,22 +118,22 @@ if uploaded_file:
                 st.write(user_query)
 
             if not GROQ_API_KEY:
-                st.error("Groq API Key is missing. Please verify your Streamlit Secrets.")
+                st.error("Groq API Key missing. Please verify your Streamlit secrets/environment settings.")
             else:
                 with st.chat_message("assistant"):
-                    with st.spinner("Analyzing document and generating response..."):
-                        # Updated to current stable active model
+                    with st.spinner("Searching document context and generating answer..."):
+                        # Active Stable Model
                         llm = ChatGroq(
                             groq_api_key=GROQ_API_KEY, 
-                            model_name="llama-3.1-8b-instant"
+                            model_name="llama-3.3-70b-versatile"
                         )
                         
                         docs = st.session_state.retriever.invoke(user_query)
                         context_text = "\n\n".join([doc.page_content for doc in docs])
 
                         prompt = f"""
-                        You are a professional AI Assistant. Answer the user's question based ONLY on the provided context below.
-                        If the answer cannot be found in the context, state clearly that the information is not available in the uploaded document.
+                        You are a professional Enterprise AI Assistant. Answer the user's question based strictly on the provided context below.
+                        If the answer is not contained within the document context, state clearly that the information is not present in the document.
 
                         Context:
                         {context_text}
