@@ -13,7 +13,6 @@ from langchain_groq import ChatGroq
 # ---------------------------------------------------------
 st.set_page_config(page_title="DocuMind AI", page_icon="⚡", layout="centered")
 
-# Sleek Dark-Mode Corporate Header Banner
 st.markdown("""
     <div style="background: linear-gradient(135deg, #0F172A, #1E293B); padding: 18px; border-radius: 12px; border: 1px solid #334155; text-align: center; margin-bottom: 20px;">
         <h2 style="color: #F8FAFC; margin: 0; font-family: sans-serif;">⚡ DocuMind AI</h2>
@@ -41,7 +40,7 @@ st.sidebar.info("Upload any PDF document to perform instant semantic query retri
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 
 # ---------------------------------------------------------
-# Helper Function: Process PDF (In-Memory Vectorstore)
+# Helper Function: Process PDF (Fresh Unique Vectorstore)
 # ---------------------------------------------------------
 def process_pdf(uploaded_file):
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
@@ -62,7 +61,15 @@ def process_pdf(uploaded_file):
         splits = text_splitter.split_documents(docs)
 
         embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-        vectorstore = Chroma.from_documents(documents=splits, embedding=embeddings)
+        
+        # Unique collection name so previous documents are completely isolated
+        collection_name = f"pdf_{hash(uploaded_file.name)}"
+        
+        vectorstore = Chroma.from_documents(
+            documents=splits, 
+            embedding=embeddings,
+            collection_name=collection_name
+        )
         
         return vectorstore.as_retriever(search_kwargs={"k": 3})
 
@@ -91,9 +98,13 @@ with col2:
         st.rerun()
 
 if uploaded_file:
+    # Reset when a new file is uploaded
     if "current_file" not in st.session_state or st.session_state.current_file != uploaded_file.name:
         st.session_state.current_file = uploaded_file.name
         st.session_state.chat_history = []
+        if "retriever" in st.session_state:
+            del st.session_state["retriever"]
+        
         with st.spinner("Analyzing and indexing document structure..."):
             st.session_state.retriever = process_pdf(uploaded_file)
 
@@ -119,7 +130,6 @@ if uploaded_file:
             else:
                 with st.chat_message("assistant"):
                     with st.spinner("Searching document context and generating answer..."):
-                        # Active Groq Production Model
                         llm = ChatGroq(
                             groq_api_key=GROQ_API_KEY, 
                             model_name="openai/gpt-oss-20b"
