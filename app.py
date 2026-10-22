@@ -119,10 +119,10 @@ if uploaded_file:
             else:
                 with st.chat_message("assistant"):
                     with st.spinner("Searching document context and generating answer..."):
-                        # Corrected Active Groq Model Name
+                        # Active Groq Production Model
                         llm = ChatGroq(
                             groq_api_key=GROQ_API_KEY, 
-                            model_name="llama3-8b-8192"
+                            model_name="openai/gpt-oss-20b"
                         )
                         
                         docs = st.session_state.retriever.invoke(user_query)
