@@ -6,7 +6,7 @@ from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
-from langchain_groq import ChatGroq
+from groq import Groq
 
 # ---------------------------------------------------------
 # Page Configuration & Header
@@ -45,6 +45,9 @@ try:
 except Exception:
     pass
 
+# Initialize official Groq Client
+client = Groq(api_key=GROQ_API_KEY)
+
 # ---------------------------------------------------------
 # Helper Function: Process PDF (Fresh Unique Vectorstore)
 # ---------------------------------------------------------
@@ -81,10 +84,7 @@ def process_pdf(uploaded_file):
     except Exception as e:
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
-        if "cryptography" in str(e).lower() or "dependencyerror" in str(e).lower():
-            st.error("🔒 The uploaded PDF is encrypted or password-protected.")
-        else:
-            st.error(f"⚠️ Error processing PDF document: {str(e)}")
+        st.error(f"⚠️ Error processing PDF document: {str(e)}")
         return None
 
 # ---------------------------------------------------------
@@ -134,29 +134,32 @@ if uploaded_file:
             else:
                 with st.chat_message("assistant"):
                     with st.spinner("Searching document context and generating answer..."):
-                        llm = ChatGroq(
-                            groq_api_key=GROQ_API_KEY, 
-                            model_name="llama3-8b"
-                        )
-                        
-                        docs = st.session_state.retriever.invoke(user_query)
-                        context_text = "\n\n".join([doc.page_content for doc in docs])
-
-                        prompt = f"""
-                        You are a professional Enterprise AI Assistant. Answer the user's question based strictly on the provided context below.
-                        If the answer is not contained within the document context, state clearly that the information is not present in the document.
-
-                        Context:
-                        {context_text}
-
-                        Question:
-                        {user_query}
-                        """
-
                         try:
-                            response = llm.invoke(prompt)
-                            answer = response.content
+                            docs = st.session_state.retriever.invoke(user_query)
+                            context_text = "\n\n".join([doc.page_content for doc in docs])
+
+                            prompt = f"""
+                            You are a professional Enterprise AI Assistant. Answer the user's question based strictly on the provided context below.
+                            If the answer is not contained within the document context, state clearly that the information is not present in the document.
+
+                            Context:
+                            {context_text}
+
+                            Question:
+                            {user_query}
+                            """
+
+                            chat_completion = client.chat.completions.create(
+                                messages=[
+                                    {
+                                        "role": "user",
+                                        "content": prompt,
+                                    }
+                                ],
+                                model="llama-3.3-70b-versatile",
+                            )
+                            answer = chat_completion.choices[0].message.content
                             st.write(answer)
                             st.session_state.chat_history.append({"role": "assistant", "content": answer})
                         except Exception as err:
-                            st.error(f"Error querying LLM API: {str(err)}")
+                            st.error(f"Error querying Groq API: {str(err)}")
