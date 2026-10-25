@@ -35,9 +35,9 @@ st.sidebar.markdown("---")
 st.sidebar.info("Upload any PDF document to perform instant semantic query retrieval and AI analysis.")
 
 # ---------------------------------------------------------
-# Environment Setup (Groq API Key)
+# Environment Setup (New Groq API Key)
 # ---------------------------------------------------------
-GROQ_API_KEY = "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"
+GROQ_API_KEY = "Gsk_6H5RS2sHoP2x6W1XbmkuWGdyb3FYwZcR9BD9J6HLVbxaErEFwu3C"
 
 try:
     if "GROQ_API_KEY" in st.secrets and st.secrets["GROQ_API_KEY"]:
@@ -156,7 +156,7 @@ if uploaded_file:
                                         "content": prompt,
                                     }
                                 ],
-                                model="llama-3.3-70b-versatile",
+                                model="llama-3.1-8b-instant",
                             )
                             answer = chat_completion.choices[0].message.content
                             st.write(answer)
