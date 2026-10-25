@@ -7,6 +7,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain_groq import ChatGroq
+from pypdf import PdfReader
 
 # ---------------------------------------------------------
 # Page Configuration & Header Banner
@@ -66,21 +67,29 @@ def process_pdf(uploaded_file):
         tmp_path = tmp_file.name
 
     try:
-        loader = PyPDFLoader(tmp_path)
-        docs = loader.load()
-        
+        docs = []
+        try:
+            loader = PyPDFLoader(tmp_path)
+            docs = loader.load()
+        except Exception:
+            reader = PdfReader(tmp_path)
+            text = ""
+            for page in reader.pages:
+                text += page.extract_text() or ""
+            if text:
+                from langchain_core.documents import Document
+                docs = [Document(page_content=text)]
+
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
 
-        if not docs:
-            st.error("⚠️ Unable to extract text. File structure invalid or image-only PDF.")
+        if not docs or len(docs) == 0:
+            st.error("⚠️ Text extraction failed. Check if PDF is readable.")
             return None
 
-        # Text Chunking
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
         splits = text_splitter.split_documents(docs)
 
-        # VectorStore Indexing
         embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
         collection_name = f"doc_{abs(hash(uploaded_file.name))}"
 
@@ -135,9 +144,10 @@ if "vectorstore" in st.session_state and st.session_state.vectorstore:
                     relevant_docs = retriever.invoke(prompt)
                     context = "\n\n".join([doc.page_content for doc in relevant_docs])
 
+                    # Verified Active Groq Model Endpoint
                     llm = ChatGroq(
                         groq_api_key=GROQ_API_KEY,
-                        model_name="llama-3.3-70b-versatile",
+                        model_name="llama-3.1-8b-instant",
                         temperature=0.2
                     )
 
