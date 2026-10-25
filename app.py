@@ -113,7 +113,7 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# ONLY show Chat Input if a valid vectorstore exists (PDF successfully loaded)
+# ONLY show Chat Input if a valid vectorstore exists
 if "vectorstore" in st.session_state and st.session_state.vectorstore:
     if prompt := st.chat_input("Ask anything about your document..."):
         st.session_state.messages.append({"role": "user", "content": prompt})
@@ -131,9 +131,10 @@ if "vectorstore" in st.session_state and st.session_state.vectorstore:
                         relevant_docs = retriever.invoke(prompt)
                         context = "\n\n".join([doc.page_content for doc in relevant_docs])
 
+                        # Valid & Active Groq Model
                         llm = ChatGroq(
                             groq_api_key=GROQ_API_KEY,
-                            model_name="llama-3.3-70b-versatile",
+                            model_name="llama3-70b-8192",
                             temperature=0.2
                         )
 
