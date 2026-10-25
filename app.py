@@ -9,7 +9,7 @@ from langchain_community.vectorstores import Chroma
 from langchain_groq import ChatGroq
 
 # ---------------------------------------------------------
-# Page Configuration & Clean Header Banner
+# Page Configuration & Header Banner
 # ---------------------------------------------------------
 st.set_page_config(page_title="DocuBrain AI", page_icon="🧠", layout="centered")
 
@@ -26,16 +26,23 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# Sidebar
+# Sidebar & Reset Button Option
 # ---------------------------------------------------------
 st.sidebar.title("📌 System Overview")
 st.sidebar.markdown("👨‍💻 **Developer:** Muhammad Danish Haleem")
 st.sidebar.markdown("🎓 BSAI Student | University of Agriculture Peshawar")
 st.sidebar.markdown("---")
+
+# Reset Session Button
+if st.sidebar.button("🔄 Reset Document & Chat", use_container_width=True):
+    for key in list(st.session_state.keys()):
+        del st.session_state[key]
+    st.rerun()
+
 st.sidebar.info("Upload any PDF document to perform instant semantic query retrieval and AI analysis.")
 
 # ---------------------------------------------------------
-# Environment Setup (Groq API Key Safe Handling)
+# Environment Setup (Groq API Key)
 # ---------------------------------------------------------
 GROQ_API_KEY = ""
 try:
@@ -44,8 +51,9 @@ try:
 except Exception:
     pass
 
+# अगर Secrets में Key न मिले, तो यहाँ अपनी gsk_... Key डालें (इससे Yellow Box बिल्कुल खत्म हो जाएगा)
 if not GROQ_API_KEY:
-    GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+    GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "gsk_YOUR_GROQ_API_KEY_HERE")
 
 # ---------------------------------------------------------
 # Helper Functions: Process PDF
@@ -87,11 +95,8 @@ def process_pdf(uploaded_file):
         return None
 
 # ---------------------------------------------------------
-# Main App Workflow & UI Elements
+# Main App Workflow & Single File Handling
 # ---------------------------------------------------------
-if not GROQ_API_KEY:
-    st.warning("⚠️ GROQ_API_KEY missing! Streamlit Cloud Settings > Secrets mein GROQ_API_KEY add karein.")
-
 uploaded_file = st.file_uploader("Upload a PDF document", type=["pdf"], accept_multiple_files=False)
 
 if uploaded_file:
@@ -113,39 +118,34 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# ONLY show Chat Input if a valid vectorstore exists
+# ONLY show Chat Input if PDF is successfully indexed
 if "vectorstore" in st.session_state and st.session_state.vectorstore:
     if prompt := st.chat_input("Ask anything about your document..."):
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        if not GROQ_API_KEY:
-            with st.chat_message("assistant"):
-                st.error("GROQ_API_KEY is not configured. Please add it to secrets.")
-        else:
-            with st.chat_message("assistant"):
-                with st.spinner("Thinking..."):
-                    try:
-                        retriever = st.session_state.vectorstore.as_retriever(search_kwargs={"k": 3})
-                        relevant_docs = retriever.invoke(prompt)
-                        context = "\n\n".join([doc.page_content for doc in relevant_docs])
+        with st.chat_message("assistant"):
+            with st.spinner("Thinking..."):
+                try:
+                    retriever = st.session_state.vectorstore.as_retriever(search_kwargs={"k": 3})
+                    relevant_docs = retriever.invoke(prompt)
+                    context = "\n\n".join([doc.page_content for doc in relevant_docs])
 
-                        # Valid & Active Groq Model
-                        llm = ChatGroq(
-                            groq_api_key=GROQ_API_KEY,
-                            model_name="llama3-70b-8192",
-                            temperature=0.2
-                        )
+                    llm = ChatGroq(
+                        groq_api_key=GROQ_API_KEY,
+                        model_name="llama3-70b-8192",
+                        temperature=0.2
+                    )
 
-                        system_prompt = f"Use the following context to answer the user's question accurately.\n\nContext:\n{context}"
-                        messages = [
-                            ("system", system_prompt),
-                            ("user", prompt)
-                        ]
+                    system_prompt = f"Use the following context to answer the user's question accurately.\n\nContext:\n{context}"
+                    messages = [
+                        ("system", system_prompt),
+                        ("user", prompt)
+                    ]
 
-                        response = llm.invoke(messages)
-                        st.markdown(response.content)
-                        st.session_state.messages.append({"role": "assistant", "content": response.content})
-                    except Exception as err:
-                        st.error(f"Failed to generate response: {err}")
+                    response = llm.invoke(messages)
+                    st.markdown(response.content)
+                    st.session_state.messages.append({"role": "assistant", "content": response.content})
+                except Exception as err:
+                    st.error(f"Failed to generate response: {err}")
