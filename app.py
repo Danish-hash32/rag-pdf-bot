@@ -27,7 +27,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# Main Screen Reset Button
+# Main Screen Reset Button (Screen ke Upar)
 # ---------------------------------------------------------
 col_reset1, col_reset2 = st.columns([3, 1])
 with col_reset2:
@@ -37,7 +37,7 @@ with col_reset2:
         st.rerun()
 
 # ---------------------------------------------------------
-# Sidebar
+# Sidebar Overview
 # ---------------------------------------------------------
 st.sidebar.title("📌 System Overview")
 st.sidebar.markdown("👨‍💻 **Developer:** Muhammad Danish Haleem")
@@ -46,17 +46,15 @@ st.sidebar.markdown("---")
 st.sidebar.info("Upload any PDF document to perform instant semantic query retrieval and AI analysis.")
 
 # ---------------------------------------------------------
-# Environment Setup (Groq API Key)
+# Environment Setup (Groq API Key Explicitly Set)
 # ---------------------------------------------------------
-GROQ_API_KEY = ""
+GROQ_API_KEY = "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"
+
 try:
-    if "GROQ_API_KEY" in st.secrets:
+    if "GROQ_API_KEY" in st.secrets and st.secrets["GROQ_API_KEY"]:
         GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
 except Exception:
     pass
-
-if not GROQ_API_KEY:
-    GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 
 # ---------------------------------------------------------
 # Robust PDF Processing Function
@@ -84,12 +82,14 @@ def process_pdf(uploaded_file):
             os.remove(tmp_path)
 
         if not docs or len(docs) == 0:
-            st.error("⚠️ Text extraction failed. Check if PDF is readable.")
+            st.error("⚠️ Text extraction failed. Please make sure the PDF has selectable text.")
             return None
 
+        # Text Splitting
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
         splits = text_splitter.split_documents(docs)
 
+        # VectorStore Indexing
         embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
         collection_name = f"doc_{abs(hash(uploaded_file.name))}"
 
@@ -107,23 +107,89 @@ def process_pdf(uploaded_file):
         return None
 
 # ---------------------------------------------------------
-# Main App Workflow & Single File Handling
+# Helper: Generate Document Insights (Summary & Short Questions)
+# ---------------------------------------------------------
+def generate_insights(vectorstore):
+    try:
+        retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
+        sample_docs = retriever.invoke("overview summary key points main topics")
+        sample_text = "\n\n".join([d.page_content for d in sample_docs[:3]])
+
+        llm = ChatGroq(
+            groq_api_key=GROQ_API_KEY,
+            model_name="llama-3.1-8b-instant",
+            temperature=0.3
+        )
+
+        prompt = f"""Based on the following document content, generate:
+1. A concise 2-line summary of the document.
+2. Exactly 3 short, relevant questions that a user can ask about this document.
+
+Format your output EXACTLY as:
+SUMMARY: <your 2 line summary>
+QUESTIONS:
+- <Question 1>
+- <Question 2>
+- <Question 3>
+
+Content:
+{sample_text}"""
+
+        res = llm.invoke(prompt).content
+        summary = ""
+        questions = []
+
+        if "SUMMARY:" in res:
+            parts = res.split("QUESTIONS:")
+            summary = parts[0].replace("SUMMARY:", "").strip()
+            if len(parts) > 1:
+                q_lines = parts[1].strip().split("\n")
+                questions = [q.strip("- ").strip() for q in q_lines if q.strip()]
+
+        return summary, questions[:3]
+    except Exception:
+        return "Document processed successfully.", [
+            "What is the main topic of this document?",
+            "Can you summarize the key points?",
+            "What are the important conclusions?"
+        ]
+
+# ---------------------------------------------------------
+# Main App Workflow
 # ---------------------------------------------------------
 uploaded_file = st.file_uploader("Upload a PDF document", type=["pdf"], accept_multiple_files=False)
 
 if uploaded_file:
     if "vectorstore" not in st.session_state or st.session_state.get("current_file") != uploaded_file.name:
-        with st.spinner("Indexing document..."):
+        with st.spinner("Indexing document & generating insights..."):
             vectorstore = process_pdf(uploaded_file)
             if vectorstore:
                 st.session_state.vectorstore = vectorstore
                 st.session_state.current_file = uploaded_file.name
                 st.session_state.messages = []
+                
+                # Auto-generate summary and short questions
+                summary, suggested_qs = generate_insights(vectorstore)
+                st.session_state.pdf_summary = summary
+                st.session_state.suggested_questions = suggested_qs
                 st.success("Document indexed successfully!")
 
 # Initialize Chat History
 if "messages" not in st.session_state:
     st.session_state.messages = []
+
+# Display Summary & Suggested Short Questions Cards
+if "vectorstore" in st.session_state and st.session_state.vectorstore:
+    if "pdf_summary" in st.session_state and st.session_state.pdf_summary:
+        st.info(f"📌 **Document Summary:**\n{st.session_state.pdf_summary}")
+
+    if "suggested_questions" in st.session_state and st.session_state.suggested_questions:
+        st.write("💡 **Suggested Short Questions:**")
+        q_cols = st.columns(len(st.session_state.suggested_questions))
+        for idx, q_text in enumerate(st.session_state.suggested_questions):
+            with q_cols[idx]:
+                if st.button(f"❓ {q_text[:35]}...", key=f"sq_{idx}", use_container_width=True):
+                    st.session_state.pending_prompt = q_text
 
 # Display Chat History
 for message in st.session_state.messages:
@@ -132,7 +198,14 @@ for message in st.session_state.messages:
 
 # ONLY show Chat Input if PDF is successfully indexed
 if "vectorstore" in st.session_state and st.session_state.vectorstore:
-    if prompt := st.chat_input("Ask anything about your document..."):
+    user_input = st.chat_input("Ask anything about your document...")
+    if "pending_prompt" in st.session_state:
+        prompt = st.session_state.pending_prompt
+        del st.session_state.pending_prompt
+    else:
+        prompt = user_input
+
+    if prompt:
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
@@ -144,7 +217,7 @@ if "vectorstore" in st.session_state and st.session_state.vectorstore:
                     relevant_docs = retriever.invoke(prompt)
                     context = "\n\n".join([doc.page_content for doc in relevant_docs])
 
-                    # Verified Active Groq Model Endpoint
+                    # Verified Active Groq Model
                     llm = ChatGroq(
                         groq_api_key=GROQ_API_KEY,
                         model_name="llama-3.1-8b-instant",
