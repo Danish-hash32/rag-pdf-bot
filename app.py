@@ -14,7 +14,7 @@ from langchain_groq import ChatGroq
 st.set_page_config(page_title="DocuBrain AI", page_icon="🧠", layout="centered")
 
 st.markdown("""
-    <div style="background: linear-gradient(135deg, #0F172A, #1E293B); padding: 20px; border-radius: 12px; border: 1px solid #334155; text-align: center; margin-bottom: 25px;">
+    <div style="background: linear-gradient(135deg, #0F172A, #1E293B); padding: 20px; border-radius: 12px; border: 1px solid #334155; text-align: center; margin-bottom: 20px;">
         <h2 style="color: #F8FAFC; margin: 0; font-family: sans-serif; font-weight: 700;">🧠 DocuBrain AI</h2>
         <p style="color: #38BDF8; font-size: 14px; margin: 6px 0 0 0; font-weight: 600;">
             Enterprise Document Intelligence Workspace
@@ -26,19 +26,22 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# Sidebar & Reset Button Option
+# Main Screen Reset Button (سائیڈ بار کے بجائے مین اسکرین پر)
+# ---------------------------------------------------------
+col_reset1, col_reset2 = st.columns([3, 1])
+with col_reset2:
+    if st.button("🔄 Reset Chat", use_container_width=True):
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
+        st.rerun()
+
+# ---------------------------------------------------------
+# Sidebar
 # ---------------------------------------------------------
 st.sidebar.title("📌 System Overview")
 st.sidebar.markdown("👨‍💻 **Developer:** Muhammad Danish Haleem")
 st.sidebar.markdown("🎓 BSAI Student | University of Agriculture Peshawar")
 st.sidebar.markdown("---")
-
-# Reset Session Button
-if st.sidebar.button("🔄 Reset Document & Chat", use_container_width=True):
-    for key in list(st.session_state.keys()):
-        del st.session_state[key]
-    st.rerun()
-
 st.sidebar.info("Upload any PDF document to perform instant semantic query retrieval and AI analysis.")
 
 # ---------------------------------------------------------
@@ -51,9 +54,8 @@ try:
 except Exception:
     pass
 
-# अगर Secrets में Key न मिले, तो यहाँ अपनी gsk_... Key डालें (इससे Yellow Box बिल्कुल खत्म हो जाएगा)
 if not GROQ_API_KEY:
-    GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "gsk_YOUR_GROQ_API_KEY_HERE")
+    GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 
 # ---------------------------------------------------------
 # Helper Functions: Process PDF
@@ -132,9 +134,10 @@ if "vectorstore" in st.session_state and st.session_state.vectorstore:
                     relevant_docs = retriever.invoke(prompt)
                     context = "\n\n".join([doc.page_content for doc in relevant_docs])
 
+                    # Active & Supported Groq Model
                     llm = ChatGroq(
                         groq_api_key=GROQ_API_KEY,
-                        model_name="llama3-70b-8192",
+                        model_name="llama-3.3-70b-versatile",
                         temperature=0.2
                     )
 
