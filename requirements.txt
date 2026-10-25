@@ -1,4 +1,9 @@
 streamlit
-pypdf
-langchain-groq
+langchain
+langchain-community
+langchain-huggingface
 langchain-core
+pypdf
+sentence-transformers
+transformers
+chromadb

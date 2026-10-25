@@ -1,8 +1,13 @@
 import os
 import tempfile
 import streamlit as st
-from pypdf import PdfReader
+
+from langchain_community.document_loaders import PyPDFLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_community.vectorstores import Chroma
 from langchain_groq import ChatGroq
+from pypdf import PdfReader
 
 # ---------------------------------------------------------
 # Page Configuration & Header Banner
@@ -38,7 +43,7 @@ st.sidebar.title("📌 System Overview")
 st.sidebar.markdown("👨‍💻 **Developer:** Muhammad Danish Haleem")
 st.sidebar.markdown("🎓 BSAI Student | University of Agriculture Peshawar")
 st.sidebar.markdown("---")
-st.sidebar.info("Upload any PDF document to perform instant direct analysis and AI chat.")
+st.sidebar.info("Upload any PDF document to perform instant semantic query retrieval and AI analysis.")
 
 # ---------------------------------------------------------
 # Environment Setup (Groq API Key)
@@ -52,40 +57,77 @@ except Exception:
     pass
 
 # ---------------------------------------------------------
-# Direct PDF Text Extraction (100% Crash-Proof)
+# Robust PDF Processing Function (ChromaDB RAG)
 # ---------------------------------------------------------
-def extract_pdf_text(uploaded_file):
+def process_pdf(uploaded_file):
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
         tmp_file.write(uploaded_file.getbuffer())
         tmp_path = tmp_file.name
 
     try:
-        reader = PdfReader(tmp_path)
-        full_text = ""
-        for page in reader.pages:
-            extracted = page.extract_text()
-            if extracted:
-                full_text += extracted + "\n"
+        docs = []
+        try:
+            loader = PyPDFLoader(tmp_path)
+            docs = loader.load()
+        except Exception:
+            docs = []
+
+        if not docs or len(docs) == 0:
+            reader = PdfReader(tmp_path)
+            full_text = ""
+            for page in reader.pages:
+                extracted = page.extract_text()
+                if extracted:
+                    full_text += extracted + "\n"
+            if full_text.strip():
+                from langchain_core.documents import Document
+                docs = [Document(page_content=full_text)]
 
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
 
-        if not full_text.strip():
+        if not docs or len(docs) == 0:
+            st.error("⚠️ PDF mein selectable text nahi mila.")
             return None
-        return full_text
+
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+        splits = text_splitter.split_documents(docs)
+
+        embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+        collection_name = f"doc_{abs(hash(uploaded_file.name))}"
+
+        vectorstore = Chroma.from_documents(
+            documents=splits,
+            embedding=embeddings,
+            collection_name=collection_name
+        )
+        return vectorstore
+
     except Exception as e:
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
+        st.error(f"Processing Error: {str(e)}")
         return None
 
 # ---------------------------------------------------------
 # Helper: Generate Document Insights
 # ---------------------------------------------------------
-def generate_insights(pdf_text):
+def generate_insights(vectorstore):
     try:
+        retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
+        sample_docs = retriever.invoke("summary overview introduction main points")
+        sample_text = "\n\n".join([d.page_content for d in sample_docs[:3]])
+
+        if not sample_text.strip():
+            return "Document indexed successfully.", [
+                "What is the main topic of this document?",
+                "Can you summarize key points?",
+                "What are the main conclusions?"
+            ]
+
         llm = ChatGroq(
             groq_api_key=GROQ_API_KEY,
-            model_name="llama-3.3-70b-versatile",
+            model_name="llama-3.1-8b-instant",
             temperature=0.3
         )
 
@@ -100,8 +142,8 @@ QUESTIONS:
 - <Question 2>
 - <Question 3>
 
-Text snippet:
-{pdf_text[:4000]}"""
+Text:
+{sample_text}"""
 
         res = llm.invoke(prompt).content
         summary = ""
@@ -116,7 +158,7 @@ Text snippet:
 
         return summary, questions[:3]
     except Exception:
-        return "Document processed successfully.", [
+        return "Document indexed successfully.", [
             "What is the main topic of this document?",
             "Can you summarize key points?",
             "What are the main conclusions?"
@@ -128,27 +170,25 @@ Text snippet:
 uploaded_file = st.file_uploader("Upload a PDF document", type=["pdf"], accept_multiple_files=False)
 
 if uploaded_file:
-    if "pdf_text" not in st.session_state or st.session_state.get("current_file") != uploaded_file.name:
-        with st.spinner("Processing document & generating insights..."):
-            pdf_text = extract_pdf_text(uploaded_file)
-            if pdf_text:
-                st.session_state.pdf_text = pdf_text
+    if "vectorstore" not in st.session_state or st.session_state.get("current_file") != uploaded_file.name:
+        with st.spinner("Indexing document & generating insights..."):
+            vectorstore = process_pdf(uploaded_file)
+            if vectorstore:
+                st.session_state.vectorstore = vectorstore
                 st.session_state.current_file = uploaded_file.name
                 st.session_state.messages = []
                 
-                summary, suggested_qs = generate_insights(pdf_text)
+                summary, suggested_qs = generate_insights(vectorstore)
                 st.session_state.pdf_summary = summary
                 st.session_state.suggested_questions = suggested_qs
-                st.success("Document uploaded and processed successfully!")
-            else:
-                st.error("⚠️ Is PDF سے text extract nahi ho saka.")
+                st.success("Document indexed successfully!")
 
 # Initialize Chat History
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
 # Display Summary & Professional Suggested Queries
-if "pdf_text" in st.session_state and st.session_state.pdf_text:
+if "vectorstore" in st.session_state and st.session_state.vectorstore:
     if "pdf_summary" in st.session_state and st.session_state.pdf_summary:
         st.info(f"📌 **Document Summary:**\n{st.session_state.pdf_summary}")
 
@@ -165,8 +205,8 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# ONLY show Chat Input if PDF is successfully uploaded
-if "pdf_text" in st.session_state and st.session_state.pdf_text:
+# ONLY show Chat Input if PDF is successfully indexed
+if "vectorstore" in st.session_state and st.session_state.vectorstore:
     user_input = st.chat_input("Ask anything about your document...")
     if "pending_prompt" in st.session_state:
         prompt = st.session_state.pending_prompt
@@ -182,13 +222,17 @@ if "pdf_text" in st.session_state and st.session_state.pdf_text:
         with st.chat_message("assistant"):
             with st.spinner("Thinking..."):
                 try:
+                    retriever = st.session_state.vectorstore.as_retriever(search_kwargs={"k": 3})
+                    relevant_docs = retriever.invoke(prompt)
+                    context = "\n\n".join([doc.page_content for doc in relevant_docs])
+
                     llm = ChatGroq(
                         groq_api_key=GROQ_API_KEY,
-                        model_name="llama-3.3-70b-versatile",
+                        model_name="llama-3.1-8b-instant",
                         temperature=0.2
                     )
 
-                    system_prompt = f"You are an expert AI assistant. Answer the user's question accurately using ONLY the provided document text below.\n\nDocument Text:\n{st.session_state.pdf_text}"
+                    system_prompt = f"Use the following context to answer the user's question accurately.\n\nContext:\n{context}"
                     messages = [
                         ("system", system_prompt),
                         ("user", prompt)
