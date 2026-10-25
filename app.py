@@ -35,9 +35,13 @@ st.sidebar.markdown("---")
 st.sidebar.info("Upload any PDF document to perform instant semantic query retrieval and AI analysis.")
 
 # ---------------------------------------------------------
-# Environment Setup (Groq API Key)
+# Environment Setup (Groq API Key handling)
 # ---------------------------------------------------------
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+GROQ_API_KEY = ""
+if "GROQ_API_KEY" in st.secrets:
+    GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
+else:
+    GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 
 # ---------------------------------------------------------
 # Helper Functions: Process PDF, Summarize, & Generate Questions
@@ -80,34 +84,34 @@ def process_pdf(uploaded_file):
 
 def generate_summary_and_questions(docs, api_key):
     """Generates an executive summary and 3 suggested questions from initial pages."""
-    if not docs:
+    if not docs or not api_key:
         return "", []
     
     sample_text = "\n\n".join([d.page_content for d in docs[:4]])[:3000]
     
-    llm = ChatGroq(
-        groq_api_key=api_key,
-        model_name="llama-3.3-70b-versatile",
-        temperature=0.3
-    )
-
-    prompt = f"""
-    Analyze the following document text and provide two things:
-    1. A concise 2-3 sentence Executive Summary.
-    2. Exactly 3 key questions a user might want to ask about this document.
-
-    Format your output strictly like this:
-    SUMMARY: <your summary here>
-    QUESTIONS:
-    - <Question 1>
-    - <Question 2>
-    - <Question 3>
-
-    Document Text:
-    {sample_text}
-    """
-    
     try:
+        llm = ChatGroq(
+            groq_api_key=api_key,
+            model_name="llama-3.3-70b-versatile",
+            temperature=0.3
+        )
+
+        prompt = f"""
+        Analyze the following document text and provide two things:
+        1. A concise 2-3 sentence Executive Summary.
+        2. Exactly 3 key questions a user might want to ask about this document.
+
+        Format your output strictly like this:
+        SUMMARY: <your summary here>
+        QUESTIONS:
+        - <Question 1>
+        - <Question 2>
+        - <Question 3>
+
+        Document Text:
+        {sample_text}
+        """
+        
         response = llm.invoke(prompt).content
         summary = ""
         questions = []
@@ -123,14 +127,11 @@ def generate_summary_and_questions(docs, api_key):
                         questions.append(cleaned_q)
         return summary, questions[:3]
     except Exception:
-        return "Summary unavailable.", []
+        return "", []
 
 # ---------------------------------------------------------
 # Main App Workflow & Chat Logic
 # ---------------------------------------------------------
-if not GROQ_API_KEY:
-    st.warning("⚠️ GROQ_API_KEY is missing. Please set it in Streamlit Secrets or Environment Variables.")
-
 uploaded_file = st.file_uploader("Upload a PDF document", type=["pdf"])
 
 if uploaded_file:
