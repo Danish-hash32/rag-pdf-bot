@@ -57,6 +57,13 @@ except Exception:
     pass
 
 # ---------------------------------------------------------
+# Cached Embeddings to Prevent Memory Crash
+# ---------------------------------------------------------
+@st.cache_resource
+def get_embeddings():
+    return HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+
+# ---------------------------------------------------------
 # Robust PDF Processing Function
 # ---------------------------------------------------------
 def process_pdf(uploaded_file):
@@ -93,7 +100,7 @@ def process_pdf(uploaded_file):
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
         splits = text_splitter.split_documents(docs)
 
-        embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+        embeddings = get_embeddings()
         collection_name = f"doc_{abs(hash(uploaded_file.name))}"
 
         vectorstore = Chroma.from_documents(
