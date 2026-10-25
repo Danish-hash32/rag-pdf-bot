@@ -5,7 +5,7 @@ import streamlit as st
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_community.vectorstores import Chroma
+from langchain_core.vectorstores import InMemoryVectorStore
 from langchain_groq import ChatGroq
 from pypdf import PdfReader
 
@@ -57,7 +57,7 @@ except Exception:
     pass
 
 # ---------------------------------------------------------
-# Ultra-Safe PDF Processing Function
+# Crash-Free PDF Processing (In-Memory)
 # ---------------------------------------------------------
 def process_pdf(uploaded_file):
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
@@ -65,11 +65,9 @@ def process_pdf(uploaded_file):
         tmp_path = tmp_file.name
 
     try:
-        docs = []
-        # Safe extraction using PyPDF reader directly to prevent loader crashes
         reader = PdfReader(tmp_path)
         full_text = ""
-        for page_idx, page in enumerate(reader.pages):
+        for page in reader.pages:
             extracted = page.extract_text()
             if extracted:
                 full_text += extracted + "\n"
@@ -78,25 +76,18 @@ def process_pdf(uploaded_file):
             os.remove(tmp_path)
 
         if not full_text.strip():
-            st.error("⚠️ Is PDF se text extract nahi ho saka. Yeh scanned image PDF ho sakti hai.")
+            st.error("⚠️ Is PDF se text extract nahi ho saka.")
             return None
 
         from langchain_core.documents import Document
         docs = [Document(page_content=full_text)]
 
-        # Text Splitting
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
         splits = text_splitter.split_documents(docs)
 
-        # VectorStore Indexing
+        # In-Memory VectorStore (Zero Disk Writing = Zero Crashes)
         embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-        collection_name = f"doc_{abs(hash(uploaded_file.name))}"
-
-        vectorstore = Chroma.from_documents(
-            documents=splits,
-            embedding=embeddings,
-            collection_name=collection_name
-        )
+        vectorstore = InMemoryVectorStore.from_documents(splits, embeddings)
         return vectorstore
 
     except Exception as e:
@@ -123,7 +114,7 @@ def generate_insights(vectorstore):
 
         llm = ChatGroq(
             groq_api_key=GROQ_API_KEY,
-            model_name="llama3-8b-8192",
+            model_name="llama-3.3-70b-versatile",
             temperature=0.3
         )
 
@@ -224,7 +215,7 @@ if "vectorstore" in st.session_state and st.session_state.vectorstore:
 
                     llm = ChatGroq(
                         groq_api_key=GROQ_API_KEY,
-                        model_name="llama3-8b-8192",
+                        model_name="llama-3.3-70b-versatile",
                         temperature=0.2
                     )
 
