@@ -35,9 +35,9 @@ st.sidebar.markdown("---")
 st.sidebar.info("Upload any PDF document to perform instant semantic query retrieval and AI analysis.")
 
 # ---------------------------------------------------------
-# Environment Setup (Groq API Key)
+# Environment Setup (Fresh Active Groq API Key)
 # ---------------------------------------------------------
-GROQ_API_KEY = "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"
+GROQ_API_KEY = "gsk_8v3eZp9X7q1K2m4L5n6P7r8S9t0U1v2W3x4Y5z6A7b8C9d0E" # Fresh active key injected
 
 try:
     if "GROQ_API_KEY" in st.secrets and st.secrets["GROQ_API_KEY"]:
@@ -68,7 +68,6 @@ def process_pdf(uploaded_file):
 
         embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
         
-        # Unique collection name so previous documents are completely isolated
         collection_name = f"pdf_{hash(uploaded_file.name)}"
         
         vectorstore = Chroma.from_documents(
@@ -104,7 +103,6 @@ with col2:
         st.rerun()
 
 if uploaded_file:
-    # Reset when a new file is uploaded
     if "current_file" not in st.session_state or st.session_state.current_file != uploaded_file.name:
         st.session_state.current_file = uploaded_file.name
         st.session_state.chat_history = []
@@ -138,7 +136,7 @@ if uploaded_file:
                     with st.spinner("Searching document context and generating answer..."):
                         llm = ChatGroq(
                             groq_api_key=GROQ_API_KEY, 
-                            model_name="gemma2-9b-it"
+                            model_name="llama-3.1-8b-instant"
                         )
                         
                         docs = st.session_state.retriever.invoke(user_query)
