@@ -89,7 +89,10 @@ def process_pdf(uploaded_file):
 # ---------------------------------------------------------
 # Main App Workflow & UI Elements
 # ---------------------------------------------------------
-uploaded_file = st.file_uploader("Upload a PDF document", type=["pdf"])
+if not GROQ_API_KEY:
+    st.warning("⚠️ GROQ_API_KEY missing! Streamlit Cloud Settings > Secrets mein GROQ_API_KEY add karein.")
+
+uploaded_file = st.file_uploader("Upload a PDF document", type=["pdf"], accept_multiple_files=False)
 
 if uploaded_file:
     if "vectorstore" not in st.session_state or st.session_state.get("current_file") != uploaded_file.name:
@@ -110,34 +113,5 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# Process User Question
-if prompt := st.chat_input("Ask anything about your document..."):
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.markdown(prompt)
-
-    if "vectorstore" in st.session_state and st.session_state.vectorstore:
-        with st.chat_message("assistant"):
-            with st.spinner("Thinking..."):
-                retriever = st.session_state.vectorstore.as_retriever(search_kwargs={"k": 3})
-                relevant_docs = retriever.invoke(prompt)
-                context = "\n\n".join([doc.page_content for doc in relevant_docs])
-
-                llm = ChatGroq(
-                    groq_api_key=GROQ_API_KEY,
-                    model_name="llama-3.3-70b-versatile",
-                    temperature=0.2
-                )
-
-                system_prompt = f"Use the following context to answer the user's question accurately.\n\nContext:\n{context}"
-                messages = [
-                    ("system", system_prompt),
-                    ("user", prompt)
-                ]
-
-                response = llm.invoke(messages)
-                st.markdown(response.content)
-                st.session_state.messages.append({"role": "assistant", "content": response.content})
-    else:
-        with st.chat_message("assistant"):
-            st.markdown("Please upload a PDF document first to begin answering queries.")
+# ONLY show Chat Input if a valid vectorstore exists (PDF successfully loaded)
+if "vectorstore" in st.session_state and st.session_state.vectorstore:
