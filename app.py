@@ -1,13 +1,8 @@
 import os
 import tempfile
 import streamlit as st
-
-from langchain_community.document_loaders import PyPDFLoader
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_core.vectorstores import InMemoryVectorStore
-from langchain_groq import ChatGroq
 from pypdf import PdfReader
+from langchain_groq import ChatGroq
 
 # ---------------------------------------------------------
 # Page Configuration & Header Banner
@@ -43,7 +38,7 @@ st.sidebar.title("📌 System Overview")
 st.sidebar.markdown("👨‍💻 **Developer:** Muhammad Danish Haleem")
 st.sidebar.markdown("🎓 BSAI Student | University of Agriculture Peshawar")
 st.sidebar.markdown("---")
-st.sidebar.info("Upload any PDF document to perform instant semantic query retrieval and AI analysis.")
+st.sidebar.info("Upload any PDF document to perform instant direct analysis and AI chat.")
 
 # ---------------------------------------------------------
 # Environment Setup (Groq API Key)
@@ -57,9 +52,9 @@ except Exception:
     pass
 
 # ---------------------------------------------------------
-# Crash-Free PDF Processing (In-Memory)
+# Direct PDF Text Extraction (100% Crash-Proof)
 # ---------------------------------------------------------
-def process_pdf(uploaded_file):
+def extract_pdf_text(uploaded_file):
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
         tmp_file.write(uploaded_file.getbuffer())
         tmp_path = tmp_file.name
@@ -76,42 +71,18 @@ def process_pdf(uploaded_file):
             os.remove(tmp_path)
 
         if not full_text.strip():
-            st.error("⚠️ Is PDF se text extract nahi ho saka.")
             return None
-
-        from langchain_core.documents import Document
-        docs = [Document(page_content=full_text)]
-
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-        splits = text_splitter.split_documents(docs)
-
-        # In-Memory VectorStore (Zero Disk Writing = Zero Crashes)
-        embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-        vectorstore = InMemoryVectorStore.from_documents(splits, embeddings)
-        return vectorstore
-
+        return full_text
     except Exception as e:
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
-        st.error(f"Processing Error: {str(e)}")
         return None
 
 # ---------------------------------------------------------
 # Helper: Generate Document Insights
 # ---------------------------------------------------------
-def generate_insights(vectorstore):
+def generate_insights(pdf_text):
     try:
-        retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
-        sample_docs = retriever.invoke("summary overview introduction main points")
-        sample_text = "\n\n".join([d.page_content for d in sample_docs[:3]])
-
-        if not sample_text.strip():
-            return "Document indexed successfully.", [
-                "What is the main topic of this document?",
-                "Can you summarize key points?",
-                "What are the main conclusions?"
-            ]
-
         llm = ChatGroq(
             groq_api_key=GROQ_API_KEY,
             model_name="llama-3.3-70b-versatile",
@@ -129,8 +100,8 @@ QUESTIONS:
 - <Question 2>
 - <Question 3>
 
-Text:
-{sample_text}"""
+Text snippet:
+{pdf_text[:4000]}"""
 
         res = llm.invoke(prompt).content
         summary = ""
@@ -145,7 +116,7 @@ Text:
 
         return summary, questions[:3]
     except Exception:
-        return "Document indexed successfully.", [
+        return "Document processed successfully.", [
             "What is the main topic of this document?",
             "Can you summarize key points?",
             "What are the main conclusions?"
@@ -157,25 +128,27 @@ Text:
 uploaded_file = st.file_uploader("Upload a PDF document", type=["pdf"], accept_multiple_files=False)
 
 if uploaded_file:
-    if "vectorstore" not in st.session_state or st.session_state.get("current_file") != uploaded_file.name:
-        with st.spinner("Indexing document & generating insights..."):
-            vectorstore = process_pdf(uploaded_file)
-            if vectorstore:
-                st.session_state.vectorstore = vectorstore
+    if "pdf_text" not in st.session_state or st.session_state.get("current_file") != uploaded_file.name:
+        with st.spinner("Processing document & generating insights..."):
+            pdf_text = extract_pdf_text(uploaded_file)
+            if pdf_text:
+                st.session_state.pdf_text = pdf_text
                 st.session_state.current_file = uploaded_file.name
                 st.session_state.messages = []
                 
-                summary, suggested_qs = generate_insights(vectorstore)
+                summary, suggested_qs = generate_insights(pdf_text)
                 st.session_state.pdf_summary = summary
                 st.session_state.suggested_questions = suggested_qs
-                st.success("Document indexed successfully!")
+                st.success("Document uploaded and processed successfully!")
+            else:
+                st.error("⚠️ Is PDF سے text extract nahi ho saka.")
 
 # Initialize Chat History
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
 # Display Summary & Professional Suggested Queries
-if "vectorstore" in st.session_state and st.session_state.vectorstore:
+if "pdf_text" in st.session_state and st.session_state.pdf_text:
     if "pdf_summary" in st.session_state and st.session_state.pdf_summary:
         st.info(f"📌 **Document Summary:**\n{st.session_state.pdf_summary}")
 
@@ -192,8 +165,8 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# ONLY show Chat Input if PDF is successfully indexed
-if "vectorstore" in st.session_state and st.session_state.vectorstore:
+# ONLY show Chat Input if PDF is successfully uploaded
+if "pdf_text" in st.session_state and st.session_state.pdf_text:
     user_input = st.chat_input("Ask anything about your document...")
     if "pending_prompt" in st.session_state:
         prompt = st.session_state.pending_prompt
@@ -209,17 +182,13 @@ if "vectorstore" in st.session_state and st.session_state.vectorstore:
         with st.chat_message("assistant"):
             with st.spinner("Thinking..."):
                 try:
-                    retriever = st.session_state.vectorstore.as_retriever(search_kwargs={"k": 3})
-                    relevant_docs = retriever.invoke(prompt)
-                    context = "\n\n".join([doc.page_content for doc in relevant_docs])
-
                     llm = ChatGroq(
                         groq_api_key=GROQ_API_KEY,
                         model_name="llama-3.3-70b-versatile",
                         temperature=0.2
                     )
 
-                    system_prompt = f"Use the following context to answer the user's question accurately.\n\nContext:\n{context}"
+                    system_prompt = f"You are an expert AI assistant. Answer the user's question accurately using ONLY the provided document text below.\n\nDocument Text:\n{st.session_state.pdf_text}"
                     messages = [
                         ("system", system_prompt),
                         ("user", prompt)
