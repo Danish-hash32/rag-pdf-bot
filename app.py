@@ -27,7 +27,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# Main Screen Reset Button
+# Main Screen Reset Button (Screen ke Upar)
 # ---------------------------------------------------------
 col_reset1, col_reset2 = st.columns([3, 1])
 with col_reset2:
@@ -57,7 +57,7 @@ except Exception:
     pass
 
 # ---------------------------------------------------------
-# Robust PDF Processing Function (ChromaDB RAG)
+# Robust PDF Processing Function
 # ---------------------------------------------------------
 def process_pdf(uploaded_file):
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
@@ -110,95 +110,23 @@ def process_pdf(uploaded_file):
         return None
 
 # ---------------------------------------------------------
-# Helper: Generate Document Insights
-# ---------------------------------------------------------
-def generate_insights(vectorstore):
-    try:
-        retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
-        sample_docs = retriever.invoke("summary overview introduction main points")
-        sample_text = "\n\n".join([d.page_content for d in sample_docs[:3]])
-
-        if not sample_text.strip():
-            return "Document indexed successfully.", [
-                "What is the main topic of this document?",
-                "Can you summarize key points?",
-                "What are the main conclusions?"
-            ]
-
-        llm = ChatGroq(
-            groq_api_key=GROQ_API_KEY,
-            model_name="llama-3.1-8b-instant",
-            temperature=0.3
-        )
-
-        prompt = f"""Based on the following document text, provide:
-1. A 2-line clean summary of the document.
-2. Exactly 3 short questions a user can ask.
-
-Format EXACTLY like this:
-SUMMARY: <summary text>
-QUESTIONS:
-- <Question 1>
-- <Question 2>
-- <Question 3>
-
-Text:
-{sample_text}"""
-
-        res = llm.invoke(prompt).content
-        summary = ""
-        questions = []
-
-        if "SUMMARY:" in res:
-            parts = res.split("QUESTIONS:")
-            summary = parts[0].replace("SUMMARY:", "").strip()
-            if len(parts) > 1:
-                q_lines = parts[1].strip().split("\n")
-                questions = [q.strip("- ").strip() for q in q_lines if q.strip()]
-
-        return summary, questions[:3]
-    except Exception:
-        return "Document indexed successfully.", [
-            "What is the main topic of this document?",
-            "Can you summarize key points?",
-            "What are the main conclusions?"
-        ]
-
-# ---------------------------------------------------------
 # Main App Workflow
 # ---------------------------------------------------------
 uploaded_file = st.file_uploader("Upload a PDF document", type=["pdf"], accept_multiple_files=False)
 
 if uploaded_file:
     if "vectorstore" not in st.session_state or st.session_state.get("current_file") != uploaded_file.name:
-        with st.spinner("Indexing document & generating insights..."):
+        with st.spinner("Indexing document..."):
             vectorstore = process_pdf(uploaded_file)
             if vectorstore:
                 st.session_state.vectorstore = vectorstore
                 st.session_state.current_file = uploaded_file.name
                 st.session_state.messages = []
-                
-                summary, suggested_qs = generate_insights(vectorstore)
-                st.session_state.pdf_summary = summary
-                st.session_state.suggested_questions = suggested_qs
                 st.success("Document indexed successfully!")
 
 # Initialize Chat History
 if "messages" not in st.session_state:
     st.session_state.messages = []
-
-# Display Summary & Professional Suggested Queries
-if "vectorstore" in st.session_state and st.session_state.vectorstore:
-    if "pdf_summary" in st.session_state and st.session_state.pdf_summary:
-        st.info(f"📌 **Document Summary:**\n{st.session_state.pdf_summary}")
-
-    if "suggested_questions" in st.session_state and st.session_state.suggested_questions:
-        st.markdown("💡 **Suggested Queries:**")
-        q_cols = st.columns(len(st.session_state.suggested_questions))
-        for idx, q_text in enumerate(st.session_state.suggested_questions):
-            with q_cols[idx]:
-                if st.button(f"📌 {q_text[:32]}...", key=f"sq_{idx}", use_container_width=True):
-                    st.session_state.pending_prompt = q_text
 
 # Display Chat History
 for message in st.session_state.messages:
@@ -207,13 +135,7 @@ for message in st.session_state.messages:
 
 # ONLY show Chat Input if PDF is successfully indexed
 if "vectorstore" in st.session_state and st.session_state.vectorstore:
-    user_input = st.chat_input("Ask anything about your document...")
-    if "pending_prompt" in st.session_state:
-        prompt = st.session_state.pending_prompt
-        del st.session_state.pending_prompt
-    else:
-        prompt = user_input
-
+    prompt = st.chat_input("Ask anything about your document...")
     if prompt:
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
