@@ -7,26 +7,37 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain_groq import ChatGroq
+from pypdf import PdfReader
 
 # ---------------------------------------------------------
-# Page Configuration & Header
+# Page Configuration & Header Banner
 # ---------------------------------------------------------
-st.set_page_config(page_title="DocuMind AI", page_icon="⚡", layout="centered")
+st.set_page_config(page_title="DocuBrain AI", page_icon="🧠", layout="centered")
 
 st.markdown("""
-    <div style="background: linear-gradient(135deg, #0F172A, #1E293B); padding: 18px; border-radius: 12px; border: 1px solid #334155; text-align: center; margin-bottom: 20px;">
-        <h2 style="color: #F8FAFC; margin: 0; font-family: sans-serif;">⚡ DocuMind AI</h2>
-        <p style="color: #38BDF8; font-size: 13px; margin: 4px 0 0 0; font-weight: 500;">
+    <div style="background: linear-gradient(135deg, #0F172A, #1E293B); padding: 20px; border-radius: 12px; border: 1px solid #334155; text-align: center; margin-bottom: 20px;">
+        <h2 style="color: #F8FAFC; margin: 0; font-family: sans-serif; font-weight: 700;">🧠 DocuBrain AI</h2>
+        <p style="color: #38BDF8; font-size: 14px; margin: 6px 0 0 0; font-weight: 600;">
             Enterprise Document Intelligence Workspace
         </p>
-        <p style="color: #94A3B8; font-size: 12px; margin: 6px 0 0 0; font-weight: 600;">
-            🚀 Developed by Muhammad Danish Haleem | BSAI Student, UOA Peshawar
+        <p style="color: #94A3B8; font-size: 12px; margin: 8px 0 0 0; font-weight: 500;">
+            🚀 Developed by <b>Muhammad Danish Haleem</b> | BSAI Student, UOA Peshawar
         </p>
     </div>
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# Sidebar
+# Main Screen Reset Button
+# ---------------------------------------------------------
+col_reset1, col_reset2 = st.columns([3, 1])
+with col_reset2:
+    if st.button("🔄 Reset Chat", use_container_width=True):
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
+        st.rerun()
+
+# ---------------------------------------------------------
+# Sidebar Overview
 # ---------------------------------------------------------
 st.sidebar.title("📌 System Overview")
 st.sidebar.markdown("👨‍💻 **Developer:** Muhammad Danish Haleem")
@@ -37,122 +48,194 @@ st.sidebar.info("Upload any PDF document to perform instant semantic query retri
 # ---------------------------------------------------------
 # Environment Setup (Groq API Key)
 # ---------------------------------------------------------
-GROQ_API_KEY = os.environ.get("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", "")
+GROQ_API_KEY = "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"
+
+try:
+    if "GROQ_API_KEY" in st.secrets and st.secrets["GROQ_API_KEY"]:
+        GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
+except Exception:
+    pass
 
 # ---------------------------------------------------------
-# Helper Function: Process PDF (Fresh Unique Vectorstore)
+# Ultra-Safe PDF Processing Function
 # ---------------------------------------------------------
 def process_pdf(uploaded_file):
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
-        tmp_file.write(uploaded_file.read())
+        tmp_file.write(uploaded_file.getbuffer())
         tmp_path = tmp_file.name
 
     try:
-        loader = PyPDFLoader(tmp_path)
-        docs = loader.load()
+        docs = []
+        # Safe extraction using PyPDF reader directly to prevent loader crashes
+        reader = PdfReader(tmp_path)
+        full_text = ""
+        for page_idx, page in enumerate(reader.pages):
+            extracted = page.extract_text()
+            if extracted:
+                full_text += extracted + "\n"
+
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
 
-        if not docs:
-            st.error("⚠️ Unable to extract text. Please verify that the PDF is not an image-only scan.")
+        if not full_text.strip():
+            st.error("⚠️ Is PDF se text extract nahi ho saka. Yeh scanned image PDF ho sakti hai.")
             return None
 
+        from langchain_core.documents import Document
+        docs = [Document(page_content=full_text)]
+
+        # Text Splitting
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
         splits = text_splitter.split_documents(docs)
 
-        embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-        
-        # Unique collection name so previous documents are completely isolated
-        collection_name = f"pdf_{hash(uploaded_file.name)}"
-        
+        # VectorStore Indexing
+        embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+        collection_name = f"doc_{abs(hash(uploaded_file.name))}"
+
         vectorstore = Chroma.from_documents(
-            documents=splits, 
+            documents=splits,
             embedding=embeddings,
             collection_name=collection_name
         )
-        
-        return vectorstore.as_retriever(search_kwargs={"k": 3})
+        return vectorstore
 
     except Exception as e:
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
-        if "cryptography" in str(e).lower() or "dependencyerror" in str(e).lower():
-            st.error("🔒 The uploaded PDF is encrypted or password-protected.")
-        else:
-            st.error(f"⚠️ Error processing PDF document: {str(e)}")
+        st.error(f"Processing Error: {str(e)}")
         return None
 
 # ---------------------------------------------------------
-# Main Interface & Controls
+# Helper: Generate Document Insights
 # ---------------------------------------------------------
-col1, col2 = st.columns([3, 1])
+def generate_insights(vectorstore):
+    try:
+        retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
+        sample_docs = retriever.invoke("summary overview introduction main points")
+        sample_text = "\n\n".join([d.page_content for d in sample_docs[:3]])
 
-with col1:
-    uploaded_file = st.file_uploader("Upload PDF Document", type=["pdf"])
+        if not sample_text.strip():
+            return "Document indexed successfully.", [
+                "What is the main topic of this document?",
+                "Can you summarize key points?",
+                "What are the main conclusions?"
+            ]
 
-with col2:
-    st.write("") 
-    st.write("")
-    if st.button("🔄 Reset Chat", use_container_width=True):
-        st.session_state.clear()
-        st.rerun()
+        llm = ChatGroq(
+            groq_api_key=GROQ_API_KEY,
+            model_name="llama3-8b-8192",
+            temperature=0.3
+        )
+
+        prompt = f"""Based on the following document text, provide:
+1. A 2-line clean summary of the document.
+2. Exactly 3 short questions a user can ask.
+
+Format EXACTLY like this:
+SUMMARY: <summary text>
+QUESTIONS:
+- <Question 1>
+- <Question 2>
+- <Question 3>
+
+Text:
+{sample_text}"""
+
+        res = llm.invoke(prompt).content
+        summary = ""
+        questions = []
+
+        if "SUMMARY:" in res:
+            parts = res.split("QUESTIONS:")
+            summary = parts[0].replace("SUMMARY:", "").strip()
+            if len(parts) > 1:
+                q_lines = parts[1].strip().split("\n")
+                questions = [q.strip("- ").strip() for q in q_lines if q.strip()]
+
+        return summary, questions[:3]
+    except Exception:
+        return "Document indexed successfully.", [
+            "What is the main topic of this document?",
+            "Can you summarize key points?",
+            "What are the main conclusions?"
+        ]
+
+# ---------------------------------------------------------
+# Main App Workflow
+# ---------------------------------------------------------
+uploaded_file = st.file_uploader("Upload a PDF document", type=["pdf"], accept_multiple_files=False)
 
 if uploaded_file:
-    # Reset when a new file is uploaded
-    if "current_file" not in st.session_state or st.session_state.current_file != uploaded_file.name:
-        st.session_state.current_file = uploaded_file.name
-        st.session_state.chat_history = []
-        if "retriever" in st.session_state:
-            del st.session_state["retriever"]
-        
-        with st.spinner("Analyzing and indexing document structure..."):
-            st.session_state.retriever = process_pdf(uploaded_file)
+    if "vectorstore" not in st.session_state or st.session_state.get("current_file") != uploaded_file.name:
+        with st.spinner("Indexing document & generating insights..."):
+            vectorstore = process_pdf(uploaded_file)
+            if vectorstore:
+                st.session_state.vectorstore = vectorstore
+                st.session_state.current_file = uploaded_file.name
+                st.session_state.messages = []
+                
+                summary, suggested_qs = generate_insights(vectorstore)
+                st.session_state.pdf_summary = summary
+                st.session_state.suggested_questions = suggested_qs
+                st.success("Document indexed successfully!")
 
-    if st.session_state.get("retriever"):
-        st.success("✅ Document processed and indexed. You may ask questions below.")
+# Initialize Chat History
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 
-        if "chat_history" not in st.session_state:
-            st.session_state.chat_history = []
+# Display Summary & Professional Suggested Queries
+if "vectorstore" in st.session_state and st.session_state.vectorstore:
+    if "pdf_summary" in st.session_state and st.session_state.pdf_summary:
+        st.info(f"📌 **Document Summary:**\n{st.session_state.pdf_summary}")
 
-        for msg in st.session_state.chat_history:
-            with st.chat_message(msg["role"]):
-                st.write(msg["content"])
+    if "suggested_questions" in st.session_state and st.session_state.suggested_questions:
+        st.markdown("💡 **Suggested Queries:**")
+        q_cols = st.columns(len(st.session_state.suggested_questions))
+        for idx, q_text in enumerate(st.session_state.suggested_questions):
+            with q_cols[idx]:
+                if st.button(f"📌 {q_text[:32]}...", key=f"sq_{idx}", use_container_width=True):
+                    st.session_state.pending_prompt = q_text
 
-        user_query = st.chat_input("Ask a question regarding the uploaded PDF...")
+# Display Chat History
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
 
-        if user_query:
-            st.session_state.chat_history.append({"role": "user", "content": user_query})
-            with st.chat_message("user"):
-                st.write(user_query)
+# ONLY show Chat Input if PDF is successfully indexed
+if "vectorstore" in st.session_state and st.session_state.vectorstore:
+    user_input = st.chat_input("Ask anything about your document...")
+    if "pending_prompt" in st.session_state:
+        prompt = st.session_state.pending_prompt
+        del st.session_state.pending_prompt
+    else:
+        prompt = user_input
 
-            if not GROQ_API_KEY:
-                st.error("Groq API Key missing. Please verify your Streamlit secrets/environment settings.")
-            else:
-                with st.chat_message("assistant"):
-                    with st.spinner("Searching document context and generating answer..."):
-                        llm = ChatGroq(
-                            groq_api_key=GROQ_API_KEY, 
-                            model_name="openai/gpt-oss-20b"
-                        )
-                        
-                        docs = st.session_state.retriever.invoke(user_query)
-                        context_text = "\n\n".join([doc.page_content for doc in docs])
+    if prompt:
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
 
-                        prompt = f"""
-                        You are a professional Enterprise AI Assistant. Answer the user's question based strictly on the provided context below.
-                        If the answer is not contained within the document context, state clearly that the information is not present in the document.
+        with st.chat_message("assistant"):
+            with st.spinner("Thinking..."):
+                try:
+                    retriever = st.session_state.vectorstore.as_retriever(search_kwargs={"k": 3})
+                    relevant_docs = retriever.invoke(prompt)
+                    context = "\n\n".join([doc.page_content for doc in relevant_docs])
 
-                        Context:
-                        {context_text}
+                    llm = ChatGroq(
+                        groq_api_key=GROQ_API_KEY,
+                        model_name="llama3-8b-8192",
+                        temperature=0.2
+                    )
 
-                        Question:
-                        {user_query}
-                        """
+                    system_prompt = f"Use the following context to answer the user's question accurately.\n\nContext:\n{context}"
+                    messages = [
+                        ("system", system_prompt),
+                        ("user", prompt)
+                    ]
 
-                        try:
-                            response = llm.invoke(prompt)
-                            answer = response.content
-                            st.write(answer)
-                            st.session_state.chat_history.append({"role": "assistant", "content": answer})
-                        except Exception as err:
-                            st.error(f"Error querying LLM API: {str(err)}")
+                    response = llm.invoke(messages)
+                    st.markdown(response.content)
+                    st.session_state.messages.append({"role": "assistant", "content": response.content})
+                except Exception as err:
+                    st.error(f"Failed to generate response: {err}")
