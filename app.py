@@ -7,6 +7,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain_groq import ChatGroq
+from pypdf import PdfReader
 
 # ---------------------------------------------------------
 # Page Configuration & Header Banner
@@ -26,7 +27,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# Main Screen Reset Button (سائیڈ بار کے بجائے مین اسکرین پر)
+# Main Screen Reset Button
 # ---------------------------------------------------------
 col_reset1, col_reset2 = st.columns([3, 1])
 with col_reset2:
@@ -58,7 +59,7 @@ if not GROQ_API_KEY:
     GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 
 # ---------------------------------------------------------
-# Helper Functions: Process PDF
+# Robust PDF Processing Function
 # ---------------------------------------------------------
 def process_pdf(uploaded_file):
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
@@ -66,22 +67,35 @@ def process_pdf(uploaded_file):
         tmp_path = tmp_file.name
 
     try:
-        loader = PyPDFLoader(tmp_path)
-        docs = loader.load()
+        docs = []
+        # Primary Loader Attempt
+        try:
+            loader = PyPDFLoader(tmp_path)
+            docs = loader.load()
+        except Exception:
+            # Fallback Loader Attempt using PdfReader
+            reader = PdfReader(tmp_path)
+            text = ""
+            for page in reader.pages:
+                text += page.extract_text() or ""
+            if text:
+                from langchain_core.documents import Document
+                docs = [Document(page_content=text)]
+
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
 
-        if not docs:
-            st.error("⚠️ Unable to extract text. Please verify that the PDF is not an image-only scan.")
+        if not docs or len(docs) == 0:
+            st.error("⚠️ Unable to extract text. File structure invalid or image-only PDF.")
             return None
 
-        # Text Splitting
+        # Text Chunking
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
         splits = text_splitter.split_documents(docs)
 
-        # Embedding Setup
+        # VectorStore Indexing
         embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-        collection_name = f"doc_{hash(uploaded_file.name) & 0xFFFFFFFF}"
+        collection_name = f"doc_{abs(hash(uploaded_file.name))}"
 
         vectorstore = Chroma.from_documents(
             documents=splits,
@@ -93,7 +107,7 @@ def process_pdf(uploaded_file):
     except Exception as e:
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
-        st.error(f"Error processing document: {e}")
+        st.error(f"Processing Error: {str(e)}")
         return None
 
 # ---------------------------------------------------------
@@ -134,7 +148,6 @@ if "vectorstore" in st.session_state and st.session_state.vectorstore:
                     relevant_docs = retriever.invoke(prompt)
                     context = "\n\n".join([doc.page_content for doc in relevant_docs])
 
-                    # Active & Supported Groq Model
                     llm = ChatGroq(
                         groq_api_key=GROQ_API_KEY,
                         model_name="llama-3.3-70b-versatile",
