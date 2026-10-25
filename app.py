@@ -7,7 +7,6 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain_groq import ChatGroq
-from pypdf import PdfReader
 
 # ---------------------------------------------------------
 # Page Configuration & Header Banner
@@ -63,29 +62,17 @@ if not GROQ_API_KEY:
 # ---------------------------------------------------------
 def process_pdf(uploaded_file):
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
-        tmp_file.write(uploaded_file.read())
+        tmp_file.write(uploaded_file.getbuffer())
         tmp_path = tmp_file.name
 
     try:
-        docs = []
-        # Primary Loader Attempt
-        try:
-            loader = PyPDFLoader(tmp_path)
-            docs = loader.load()
-        except Exception:
-            # Fallback Loader Attempt using PdfReader
-            reader = PdfReader(tmp_path)
-            text = ""
-            for page in reader.pages:
-                text += page.extract_text() or ""
-            if text:
-                from langchain_core.documents import Document
-                docs = [Document(page_content=text)]
-
+        loader = PyPDFLoader(tmp_path)
+        docs = loader.load()
+        
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
 
-        if not docs or len(docs) == 0:
+        if not docs:
             st.error("⚠️ Unable to extract text. File structure invalid or image-only PDF.")
             return None
 
