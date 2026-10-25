@@ -27,7 +27,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# Main Screen Reset Button (Screen ke Upar)
+# Main Screen Reset Button
 # ---------------------------------------------------------
 col_reset1, col_reset2 = st.columns([3, 1])
 with col_reset2:
@@ -133,7 +133,7 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# ONLY show Chat Input if PDF is successfully indexed
+# Chat Input (Only shown when vectorstore is ready)
 if "vectorstore" in st.session_state and st.session_state.vectorstore:
     prompt = st.chat_input("Ask anything about your document...")
     if prompt:
