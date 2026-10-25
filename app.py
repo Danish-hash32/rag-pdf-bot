@@ -14,7 +14,7 @@ from langchain_groq import ChatGroq
 st.set_page_config(page_title="DocuBrain AI", page_icon="🧠", layout="centered")
 
 # Display Logo Image (Top Banner)
-st.image("logo.png", use_container_width=True)
+st.image("logo.png.jpeg", use_container_width=True)
 
 # Sub-header Banner with Developer Info
 st.markdown("""
