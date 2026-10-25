@@ -115,3 +115,36 @@ for message in st.session_state.messages:
 
 # ONLY show Chat Input if a valid vectorstore exists (PDF successfully loaded)
 if "vectorstore" in st.session_state and st.session_state.vectorstore:
+    if prompt := st.chat_input("Ask anything about your document..."):
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        if not GROQ_API_KEY:
+            with st.chat_message("assistant"):
+                st.error("GROQ_API_KEY is not configured. Please add it to secrets.")
+        else:
+            with st.chat_message("assistant"):
+                with st.spinner("Thinking..."):
+                    try:
+                        retriever = st.session_state.vectorstore.as_retriever(search_kwargs={"k": 3})
+                        relevant_docs = retriever.invoke(prompt)
+                        context = "\n\n".join([doc.page_content for doc in relevant_docs])
+
+                        llm = ChatGroq(
+                            groq_api_key=GROQ_API_KEY,
+                            model_name="llama-3.3-70b-versatile",
+                            temperature=0.2
+                        )
+
+                        system_prompt = f"Use the following context to answer the user's question accurately.\n\nContext:\n{context}"
+                        messages = [
+                            ("system", system_prompt),
+                            ("user", prompt)
+                        ]
+
+                        response = llm.invoke(messages)
+                        st.markdown(response.content)
+                        st.session_state.messages.append({"role": "assistant", "content": response.content})
+                    except Exception as err:
+                        st.error(f"Failed to generate response: {err}")
