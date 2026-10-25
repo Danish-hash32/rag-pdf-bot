@@ -5,7 +5,7 @@ import streamlit as st
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_community.vectorstores import Chroma
+from langchain_core.vectorstores import InMemoryVectorStore
 from langchain_groq import ChatGroq
 from pypdf import PdfReader
 
@@ -57,7 +57,7 @@ except Exception:
     pass
 
 # ---------------------------------------------------------
-# Robust PDF Processing Function
+# Robust In-Memory PDF Processing Function
 # ---------------------------------------------------------
 def process_pdf(uploaded_file):
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
@@ -87,22 +87,16 @@ def process_pdf(uploaded_file):
             os.remove(tmp_path)
 
         if not docs or len(docs) == 0 or not any(d.page_content.strip() for d in docs):
-            st.error("⚠️ PDF mein selectable text nahi mila. Kripya PDF file verify karein.")
+            st.error("⚠️ PDF mein selectable text nahi mila.")
             return None
 
         # Text Splitting
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
         splits = text_splitter.split_documents(docs)
 
-        # VectorStore Indexing
+        # In-Memory Vector Store (No ChromaDB crashing issues!)
         embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-        collection_name = f"doc_{abs(hash(uploaded_file.name))}"
-
-        vectorstore = Chroma.from_documents(
-            documents=splits,
-            embedding=embeddings,
-            collection_name=collection_name
-        )
+        vectorstore = InMemoryVectorStore.from_documents(splits, embeddings)
         return vectorstore
 
     except Exception as e:
@@ -112,7 +106,7 @@ def process_pdf(uploaded_file):
         return None
 
 # ---------------------------------------------------------
-# Helper: Generate Document Insights (Summary & Short Questions)
+# Helper: Generate Document Insights
 # ---------------------------------------------------------
 def generate_insights(vectorstore):
     try:
@@ -189,7 +183,7 @@ if uploaded_file:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Display Summary & Professional Suggested Short Questions
+# Display Summary & Professional Suggested Queries
 if "vectorstore" in st.session_state and st.session_state.vectorstore:
     if "pdf_summary" in st.session_state and st.session_state.pdf_summary:
         st.info(f"📌 **Document Summary:**\n{st.session_state.pdf_summary}")
