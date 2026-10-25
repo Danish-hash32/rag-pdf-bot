@@ -138,7 +138,7 @@ if uploaded_file:
                     with st.spinner("Searching document context and generating answer..."):
                         llm = ChatGroq(
                             groq_api_key=GROQ_API_KEY, 
-                            model_name="llama3-70b-8192"
+                            model_name="llama3.3-70b-versatile"
                         )
                         
                         docs = st.session_state.retriever.invoke(user_query)
