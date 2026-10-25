@@ -37,14 +37,20 @@ st.sidebar.info("Upload any PDF document to perform instant semantic query retri
 # ---------------------------------------------------------
 # Environment Setup (Groq API Key)
 # ---------------------------------------------------------
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+GROQ_API_KEY = "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"
+
+try:
+    if "GROQ_API_KEY" in st.secrets and st.secrets["GROQ_API_KEY"]:
+        GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
+except Exception:
+    pass
 
 # ---------------------------------------------------------
 # Helper Function: Process PDF (Fresh Unique Vectorstore)
 # ---------------------------------------------------------
 def process_pdf(uploaded_file):
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
-        tmp_file.write(uploaded_file.read())
+        tmp_file.write(uploaded_file.getbuffer())
         tmp_path = tmp_file.name
 
     try:
@@ -132,7 +138,7 @@ if uploaded_file:
                     with st.spinner("Searching document context and generating answer..."):
                         llm = ChatGroq(
                             groq_api_key=GROQ_API_KEY, 
-                            model_name="openai/gpt-oss-20b"
+                            model_name="llama-3.1-8b-instant"
                         )
                         
                         docs = st.session_state.retriever.invoke(user_query)
