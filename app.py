@@ -9,22 +9,18 @@ from langchain_community.vectorstores import Chroma
 from langchain_groq import ChatGroq
 
 # ---------------------------------------------------------
-# Page Configuration & Header
+# Page Configuration & Clean Header Banner
 # ---------------------------------------------------------
 st.set_page_config(page_title="DocuBrain AI", page_icon="🧠", layout="centered")
 
-# Display Logo Image (Top Banner)
-st.image("logo.png.jpeg", use_container_width=True)
-
-# Sub-header Banner with Developer Info
 st.markdown("""
-    <div style="background: linear-gradient(135deg, #0F172A, #1E293B); padding: 18px; border-radius: 12px; border: 1px solid #334155; text-align: center; margin-bottom: 20px;">
-        <h2 style="color: #F8FAFC; margin: 0; font-family: sans-serif;">🧠 DocuBrain AI</h2>
-        <p style="color: #38BDF8; font-size: 13px; margin: 4px 0 0 0; font-weight: 500;">
+    <div style="background: linear-gradient(135deg, #0F172A, #1E293B); padding: 20px; border-radius: 12px; border: 1px solid #334155; text-align: center; margin-bottom: 25px;">
+        <h2 style="color: #F8FAFC; margin: 0; font-family: sans-serif; font-weight: 700;">🧠 DocuBrain AI</h2>
+        <p style="color: #38BDF8; font-size: 14px; margin: 6px 0 0 0; font-weight: 600;">
             Enterprise Document Intelligence Workspace
         </p>
-        <p style="color: #94A3B8; font-size: 12px; margin: 6px 0 0 0; font-weight: 600;">
-            🚀 Developed by Muhammad Danish Haleem | BSAI Student, UOA Peshawar
+        <p style="color: #94A3B8; font-size: 12px; margin: 8px 0 0 0; font-weight: 500;">
+            🚀 Developed by <b>Muhammad Danish Haleem</b> | BSAI Student, UOA Peshawar
         </p>
     </div>
 """, unsafe_allow_html=True)
@@ -44,7 +40,7 @@ st.sidebar.info("Upload any PDF document to perform instant semantic query retri
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 
 # ---------------------------------------------------------
-# Helper Function: Process PDF (Fresh Unique Vectorstore)
+# Helper Functions: Process PDF, Summarize, & Generate Questions
 # ---------------------------------------------------------
 def process_pdf(uploaded_file):
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
@@ -59,7 +55,7 @@ def process_pdf(uploaded_file):
 
         if not docs:
             st.error("⚠️ Unable to extract text. Please verify that the PDF is not an image-only scan.")
-            return None
+            return None, None
 
         # Text Splitting
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
@@ -67,23 +63,67 @@ def process_pdf(uploaded_file):
 
         # Embedding Setup
         embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-
-        # Unique Collection Name to avoid memory leakage between different PDFs
         collection_name = f"doc_{hash(uploaded_file.name) & 0xFFFFFFFF}"
 
-        # Vector Store Creation
         vectorstore = Chroma.from_documents(
             documents=splits,
             embedding=embeddings,
             collection_name=collection_name
         )
-        return vectorstore
+        return vectorstore, docs
 
     except Exception as e:
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
         st.error(f"Error processing document: {e}")
-        return None
+        return None, None
+
+def generate_summary_and_questions(docs, api_key):
+    """Generates an executive summary and 3 suggested questions from initial pages."""
+    if not docs:
+        return "", []
+    
+    sample_text = "\n\n".join([d.page_content for d in docs[:4]])[:3000]
+    
+    llm = ChatGroq(
+        groq_api_key=api_key,
+        model_name="llama-3.3-70b-versatile",
+        temperature=0.3
+    )
+
+    prompt = f"""
+    Analyze the following document text and provide two things:
+    1. A concise 2-3 sentence Executive Summary.
+    2. Exactly 3 key questions a user might want to ask about this document.
+
+    Format your output strictly like this:
+    SUMMARY: <your summary here>
+    QUESTIONS:
+    - <Question 1>
+    - <Question 2>
+    - <Question 3>
+
+    Document Text:
+    {sample_text}
+    """
+    
+    try:
+        response = llm.invoke(prompt).content
+        summary = ""
+        questions = []
+        
+        if "SUMMARY:" in response:
+            parts = response.split("QUESTIONS:")
+            summary = parts[0].replace("SUMMARY:", "").strip()
+            if len(parts) > 1:
+                q_lines = parts[1].strip().split("\n")
+                for line in q_lines:
+                    cleaned_q = line.strip().lstrip("-*123. ").strip()
+                    if cleaned_q:
+                        questions.append(cleaned_q)
+        return summary, questions[:3]
+    except Exception:
+        return "Summary unavailable.", []
 
 # ---------------------------------------------------------
 # Main App Workflow & Chat Logic
@@ -95,14 +135,34 @@ uploaded_file = st.file_uploader("Upload a PDF document", type=["pdf"])
 
 if uploaded_file:
     if "vectorstore" not in st.session_state or st.session_state.get("current_file") != uploaded_file.name:
-        with st.spinner("Indexing document vectors..."):
-            vectorstore = process_pdf(uploaded_file)
-            if vectorstore:
+        with st.spinner("Indexing document & generating insights..."):
+            vectorstore, raw_docs = process_pdf(uploaded_file)
+            if vectorstore and raw_docs:
                 st.session_state.vectorstore = vectorstore
                 st.session_state.current_file = uploaded_file.name
                 st.session_state.messages = []
+                
+                # Generate AI Summary & Suggested Questions
+                summary, questions = generate_summary_and_questions(raw_docs, GROQ_API_KEY)
+                st.session_state.doc_summary = summary
+                st.session_state.suggested_questions = questions
                 st.success("Document indexed successfully!")
 
+# Display Executive Summary Box
+if "doc_summary" in st.session_state and st.session_state.doc_summary:
+    with st.expander("📊 **Document Executive Summary**", expanded=True):
+        st.write(st.session_state.doc_summary)
+
+# Display Suggested Quick Prompts
+selected_question = None
+if "suggested_questions" in st.session_state and st.session_state.suggested_questions:
+    st.markdown("💡 **Suggested Questions:**")
+    cols = st.columns(len(st.session_state.suggested_questions))
+    for idx, q in enumerate(st.session_state.suggested_questions):
+        if cols[idx].button(q, key=f"sq_{idx}"):
+            selected_question = q
+
+# Initialize Chat History
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
@@ -112,7 +172,9 @@ for message in st.session_state.messages:
         st.markdown(message["content"])
 
 # Process User Question
-if prompt := st.chat_input("Ask anything about your document..."):
+prompt = st.chat_input("Ask anything about your document...") or selected_question
+
+if prompt:
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
