@@ -27,7 +27,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# Main Screen Reset Button (Screen ke Upar)
+# Main Screen Reset Button
 # ---------------------------------------------------------
 col_reset1, col_reset2 = st.columns([3, 1])
 with col_reset2:
@@ -46,7 +46,7 @@ st.sidebar.markdown("---")
 st.sidebar.info("Upload any PDF document to perform instant semantic query retrieval and AI analysis.")
 
 # ---------------------------------------------------------
-# Environment Setup (Groq API Key Explicitly Set)
+# Environment Setup (Groq API Key)
 # ---------------------------------------------------------
 GROQ_API_KEY = "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"
 
@@ -70,19 +70,24 @@ def process_pdf(uploaded_file):
             loader = PyPDFLoader(tmp_path)
             docs = loader.load()
         except Exception:
+            docs = []
+
+        if not docs or len(docs) == 0:
             reader = PdfReader(tmp_path)
-            text = ""
+            full_text = ""
             for page in reader.pages:
-                text += page.extract_text() or ""
-            if text:
+                extracted = page.extract_text()
+                if extracted:
+                    full_text += extracted + "\n"
+            if full_text.strip():
                 from langchain_core.documents import Document
-                docs = [Document(page_content=text)]
+                docs = [Document(page_content=full_text)]
 
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
 
-        if not docs or len(docs) == 0:
-            st.error("⚠️ Text extraction failed. Please make sure the PDF has selectable text.")
+        if not docs or len(docs) == 0 or not any(d.page_content.strip() for d in docs):
+            st.error("⚠️ PDF mein selectable text nahi mila. Kripya PDF file verify karein.")
             return None
 
         # Text Splitting
@@ -112,27 +117,34 @@ def process_pdf(uploaded_file):
 def generate_insights(vectorstore):
     try:
         retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
-        sample_docs = retriever.invoke("overview summary key points main topics")
+        sample_docs = retriever.invoke("summary overview introduction main points")
         sample_text = "\n\n".join([d.page_content for d in sample_docs[:3]])
+
+        if not sample_text.strip():
+            return "Document indexed successfully.", [
+                "What is the main topic of this document?",
+                "Can you summarize key points?",
+                "What are the main conclusions?"
+            ]
 
         llm = ChatGroq(
             groq_api_key=GROQ_API_KEY,
-            model_name="llama-3.1-8b-instant",
+            model_name="llama3-8b-8192",
             temperature=0.3
         )
 
-        prompt = f"""Based on the following document content, generate:
-1. A concise 2-line summary of the document.
-2. Exactly 3 short, relevant questions that a user can ask about this document.
+        prompt = f"""Based on the following document text, provide:
+1. A 2-line clean summary of the document.
+2. Exactly 3 short questions a user can ask.
 
-Format your output EXACTLY as:
-SUMMARY: <your 2 line summary>
+Format EXACTLY like this:
+SUMMARY: <summary text>
 QUESTIONS:
 - <Question 1>
 - <Question 2>
 - <Question 3>
 
-Content:
+Text:
 {sample_text}"""
 
         res = llm.invoke(prompt).content
@@ -148,10 +160,10 @@ Content:
 
         return summary, questions[:3]
     except Exception:
-        return "Document processed successfully.", [
+        return "Document indexed successfully.", [
             "What is the main topic of this document?",
-            "Can you summarize the key points?",
-            "What are the important conclusions?"
+            "Can you summarize key points?",
+            "What are the main conclusions?"
         ]
 
 # ---------------------------------------------------------
@@ -168,7 +180,6 @@ if uploaded_file:
                 st.session_state.current_file = uploaded_file.name
                 st.session_state.messages = []
                 
-                # Auto-generate summary and short questions
                 summary, suggested_qs = generate_insights(vectorstore)
                 st.session_state.pdf_summary = summary
                 st.session_state.suggested_questions = suggested_qs
@@ -178,17 +189,17 @@ if uploaded_file:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Display Summary & Suggested Short Questions Cards
+# Display Summary & Professional Suggested Short Questions
 if "vectorstore" in st.session_state and st.session_state.vectorstore:
     if "pdf_summary" in st.session_state and st.session_state.pdf_summary:
         st.info(f"📌 **Document Summary:**\n{st.session_state.pdf_summary}")
 
     if "suggested_questions" in st.session_state and st.session_state.suggested_questions:
-        st.write("💡 **Suggested Short Questions:**")
+        st.markdown("💡 **Suggested Queries:**")
         q_cols = st.columns(len(st.session_state.suggested_questions))
         for idx, q_text in enumerate(st.session_state.suggested_questions):
             with q_cols[idx]:
-                if st.button(f"❓ {q_text[:35]}...", key=f"sq_{idx}", use_container_width=True):
+                if st.button(f"📌 {q_text[:32]}...", key=f"sq_{idx}", use_container_width=True):
                     st.session_state.pending_prompt = q_text
 
 # Display Chat History
@@ -217,10 +228,9 @@ if "vectorstore" in st.session_state and st.session_state.vectorstore:
                     relevant_docs = retriever.invoke(prompt)
                     context = "\n\n".join([doc.page_content for doc in relevant_docs])
 
-                    # Verified Active Groq Model
                     llm = ChatGroq(
                         groq_api_key=GROQ_API_KEY,
-                        model_name="llama-3.1-8b-instant",
+                        model_name="llama3-8b-8192",
                         temperature=0.2
                     )
 
