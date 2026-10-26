@@ -6,7 +6,7 @@ from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
-from langchain_google_genai import ChatGoogleGenerativeAI
+from groq import Groq
 
 # ---------------------------------------------------------
 # Page Configuration & Header
@@ -35,20 +35,20 @@ st.sidebar.markdown("---")
 st.sidebar.info("Upload any PDF document to perform instant semantic query retrieval and AI analysis.")
 
 # ---------------------------------------------------------
-# Environment Setup (Gemini API Key)
+# Environment Setup (Groq API Key)
 # ---------------------------------------------------------
-GEMINI_API_KEY = "AQ.Ab8RN6JEqpAUjnF5rZBCRMer9MtdEnygcsQvS9mAVbTm9AZzw"
+GROQ_API_KEY = "Gsk_6H5RS2sHoP2x6W1XbmkuWGdyb3FYwZcR9BD9J6HLVbxaErEFwu3C"
 
 try:
-    if "GEMINI_API_KEY" in st.secrets and st.secrets["GEMINI_API_KEY"]:
-        GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+    if "GROQ_API_KEY" in st.secrets and st.secrets["GROQ_API_KEY"]:
+        GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
 except Exception:
     pass
 
-os.environ["GOOGLE_API_KEY"] = GEMINI_API_KEY
+client = Groq(api_key=GROQ_API_KEY)
 
 # ---------------------------------------------------------
-# Helper Function: Process PDF (Fresh Unique Vectorstore)
+# Helper Function: Process PDF
 # ---------------------------------------------------------
 def process_pdf(uploaded_file):
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
@@ -128,20 +128,17 @@ if uploaded_file:
             with st.chat_message("user"):
                 st.write(user_query)
 
-            if not GEMINI_API_KEY:
-                st.error("Gemini API Key missing. Please verify your settings.")
+            if not GROQ_API_KEY:
+                st.error("Groq API Key missing.")
             else:
                 with st.chat_message("assistant"):
                     with st.spinner("Searching document context and generating answer..."):
                         try:
-                            llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", google_api_key=GEMINI_API_KEY)
-                            
                             docs = st.session_state.retriever.invoke(user_query)
                             context_text = "\n\n".join([doc.page_content for doc in docs])
 
                             prompt = f"""
-                            You are a professional Enterprise AI Assistant. Answer the user's question based strictly on the provided context below.
-                            If the answer is not contained within the document context, state clearly that the information is not present in the document.
+                            You are a precise Enterprise AI Assistant. Read the context below carefully and give an accurate, direct answer to the user's question based strictly on this context. If the answer is not present, say so clearly.
 
                             Context:
                             {context_text}
@@ -150,9 +147,17 @@ if uploaded_file:
                             {user_query}
                             """
 
-                            response = llm.invoke(prompt)
-                            answer = response.content
+                            chat_completion = client.chat.completions.create(
+                                messages=[
+                                    {
+                                        "role": "user",
+                                        "content": prompt,
+                                    }
+                                ],
+                                model="llama-3.1-8b-instant",
+                            )
+                            answer = chat_completion.choices[0].message.content
                             st.write(answer)
                             st.session_state.chat_history.append({"role": "assistant", "content": answer})
                         except Exception as err:
-                            st.error(f"Error querying Gemini API: {str(err)}")
+                            st.error(f"Error querying Groq API: {str(err)}")
