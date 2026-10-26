@@ -8,7 +8,6 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
 from langchain_huggingface import HuggingFacePipeline
-from langchain_core.prompts import PromptTemplate
 
 # ---------------------------------------------------------
 # Page Configuration & Header
@@ -37,35 +36,33 @@ st.sidebar.markdown("---")
 st.sidebar.info("Running locally via Hugging Face. No API keys required!")
 
 # ---------------------------------------------------------
-# Load Local Hugging Face LLM (Cached to run fast)
+# Load Local Hugging Face LLM (Optimized for Speed & No Loops)
 # ---------------------------------------------------------
 @st.cache_resource
 def load_local_llm():
-    # Using a lightweight, fast open-source model that runs smoothly
-    model_id = "google/gemma-2-2b-it" # Or "HuggingFaceH4/zephyr-7b-beta" / "distilgpt2"
+    model_id = "google/gemma-2-2b-it"
     try:
         tokenizer = AutoTokenizer.from_pretrained(model_id)
         model = AutoModelForCausalLM.from_pretrained(
             model_id, 
             device_map="auto", 
-            load_in_8bit=False, # Set to True if memory is low
             torch_dtype="auto"
         )
         pipe = pipeline(
             "text-generation",
             model=model,
             tokenizer=tokenizer,
-            max_new_tokens=512,
-            temperature=0.3,
-            do_sample=True
+            max_new_tokens=90,         # Shorter length for faster response time
+            temperature=0.01,          # Precise answering
+            do_sample=False,           # Greedy decoding to avoid loops
+            repetition_penalty=1.2     # Prevents repeating sentences
         )
         return HuggingFacePipeline(pipeline=pipe)
     except Exception:
-        # Fallback to a smaller ultra-light model if resources are restricted
         model_id = "distilgpt2"
         tokenizer = AutoTokenizer.from_pretrained(model_id)
         model = AutoModelForCausalLM.from_pretrained(model_id)
-        pipe = pipeline("text-generation", model=model, tokenizer=tokenizer, max_new_tokens=200)
+        pipe = pipeline("text-generation", model=model, tokenizer=tokenizer, max_new_tokens=90)
         return HuggingFacePipeline(pipeline=pipe)
 
 with st.spinner("Loading local AI model (Takes a moment on first load)..."):
@@ -89,7 +86,7 @@ def process_pdf(uploaded_file):
             st.error("⚠️ Unable to extract text. Please verify that the PDF is not an image-only scan.")
             return None
 
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=150)
         splits = text_splitter.split_documents(docs)
 
         embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
@@ -102,7 +99,7 @@ def process_pdf(uploaded_file):
             collection_name=collection_name
         )
         
-        return vectorstore.as_retriever(search_kwargs={"k": 3})
+        return vectorstore.as_retriever(search_kwargs={"k": 2})
 
     except Exception as e:
         if os.path.exists(tmp_path):
@@ -158,21 +155,14 @@ if uploaded_file:
                         docs = st.session_state.retriever.invoke(user_query)
                         context_text = "\n\n".join([doc.page_content for doc in docs])
 
-                        template = """Use the following pieces of context to answer the question at the end. If you don't know the answer, just say that you don't know.
-
-                        Context:
-                        {context}
-
-                        Question: {question}
-                        Answer:"""
-                        
-                        prompt = PromptTemplate(template=template, input_variables=["context", "question"])
-                        formatted_prompt = prompt.format(context=context_text, question=user_query)
+                        formatted_prompt = f"Context:\n{context_text}\n\nQuestion: {user_query}\nAnswer:"
 
                         response = llm.invoke(formatted_prompt)
                         
-                        # Clean up output if pipeline repeats prompt
-                        answer = response.split("Answer:")[-1].strip() if "Answer:" in response else response
+                        if "Answer:" in response:
+                            answer = response.split("Answer:")[-1].strip()
+                        else:
+                            answer = response.strip()
                         
                         st.write(answer)
                         st.session_state.chat_history.append({"role": "assistant", "content": answer})
