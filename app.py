@@ -6,7 +6,7 @@ from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
-from groq import Groq
+from langchain_groq import ChatGroq
 
 # ---------------------------------------------------------
 # Page Configuration & Header
@@ -44,8 +44,6 @@ try:
         GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
 except Exception:
     pass
-
-client = Groq(api_key=GROQ_API_KEY)
 
 # ---------------------------------------------------------
 # Helper Function: Process PDF
@@ -147,16 +145,10 @@ if uploaded_file:
                             {user_query}
                             """
 
-                            chat_completion = client.chat.completions.create(
-                                messages=[
-                                    {
-                                        "role": "user",
-                                        "content": prompt,
-                                    }
-                                ],
-                                model="llama-3.1-8b-instant",
-                            )
-                            answer = chat_completion.choices[0].message.content
+                            llm = ChatGroq(model="llama-3.1-8b-instant", groq_api_key=GROQ_API_KEY)
+                            response = llm.invoke(prompt)
+                            answer = response.content
+
                             st.write(answer)
                             st.session_state.chat_history.append({"role": "assistant", "content": answer})
                         except Exception as err:
