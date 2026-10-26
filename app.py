@@ -1,12 +1,12 @@
 import os
 import tempfile
 import streamlit as st
-import cohere
 
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
+from langchain_cohere import ChatCohere
 
 # ---------------------------------------------------------
 # Page Configuration & Header
@@ -32,17 +32,20 @@ st.sidebar.title("📌 System Overview")
 st.sidebar.markdown("👨‍💻 **Developer:** Muhammad Danish Haleem")
 st.sidebar.markdown("🎓 BSAI Student | University of Agriculture Peshawar")
 st.sidebar.markdown("---")
-st.sidebar.info("Running via Cohere API. Fast, accurate, and reliable document intelligence.")
+st.sidebar.info("Running via Cohere API & LangChain. Fast and reliable.")
 
 # ---------------------------------------------------------
-# Configure Cohere API Client
+# Configure Cohere LLM via LangChain
 # ---------------------------------------------------------
 COHERE_API_KEY = "215oD8n49yjDzOzsTtXP48JeeR9muDKmkoVsTRyl"
 
 try:
-    co_client = cohere.Client(COHERE_API_KEY)
+    llm = ChatCohere(
+        cohere_api_key=COHERE_API_KEY,
+        temperature=0.1
+    )
 except Exception as e:
-    st.error(f"⚠️ Cohere Client Initialization Error: {str(e)}")
+    st.error(f"⚠️ Cohere Initialization Error: {str(e)}")
 
 # ---------------------------------------------------------
 # Helper Function: Process PDF
@@ -142,13 +145,8 @@ if uploaded_file:
                         {user_query}
                         """
 
-                        response = co_client.chat(
-                            model="command",
-                            message=prompt,
-                            temperature=0.1
-                        )
-                        
-                        answer = response.text.strip()
+                        response = llm.invoke(prompt)
+                        answer = response.content.strip()
                         
                         st.write(answer)
                         st.session_state.chat_history.append({"role": "assistant", "content": answer})
