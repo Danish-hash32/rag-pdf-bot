@@ -143,7 +143,7 @@ if uploaded_file:
                         """
 
                         response = co_client.chat(
-                            model="command-r",
+                            model="command-light",
                             message=prompt,
                             temperature=0.1
                         )
