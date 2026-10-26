@@ -35,16 +35,9 @@ st.sidebar.markdown("---")
 st.sidebar.info("Upload any PDF document to perform instant semantic query retrieval and AI analysis.")
 
 # ---------------------------------------------------------
-# API Key Setup (Streamlit Secrets se automatic uthay ga)
+# Direct API Key Configuration
 # ---------------------------------------------------------
-GEMINI_API_KEY = ""
-try:
-    if "GEMINI_API_KEY" in st.secrets and st.secrets["GEMINI_API_KEY"]:
-        GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
-except Exception:
-    pass
-
-os.environ["GOOGLE_API_KEY"] = GEMINI_API_KEY
+GEMINI_API_KEY = "AQ.Ab8RN6JEqpAUjnF5rZBCRMer9MtdEnygcsQvS9mAVbTm9AZzw"
 
 # ---------------------------------------------------------
 # Helper Function: Process PDF
@@ -130,7 +123,10 @@ if uploaded_file:
             with st.chat_message("assistant"):
                 with st.spinner("Searching document context and generating answer..."):
                     try:
-                        llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", google_api_key=GEMINI_API_KEY)
+                        llm = ChatGoogleGenerativeAI(
+                            model="gemini-1.5-flash", 
+                            google_api_key=GEMINI_API_KEY
+                        )
                         
                         docs = st.session_state.retriever.invoke(user_query)
                         context_text = "\n\n".join([doc.page_content for doc in docs])
