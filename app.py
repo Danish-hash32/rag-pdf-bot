@@ -6,7 +6,7 @@ from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
-from langchain_groq import ChatGroq
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 # ---------------------------------------------------------
 # Page Configuration & Header
@@ -35,15 +35,16 @@ st.sidebar.markdown("---")
 st.sidebar.info("Upload any PDF document to perform instant semantic query retrieval and AI analysis.")
 
 # ---------------------------------------------------------
-# Environment Setup (Groq API Key)
+# API Key Setup (Streamlit Secrets se automatic uthay ga)
 # ---------------------------------------------------------
-GROQ_API_KEY = "Gsk_6H5RS2sHoP2x6W1XbmkuWGdyb3FYwZcR9BD9J6HLVbxaErEFwu3C"
-
+GEMINI_API_KEY = ""
 try:
-    if "GROQ_API_KEY" in st.secrets and st.secrets["GROQ_API_KEY"]:
-        GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
+    if "GEMINI_API_KEY" in st.secrets and st.secrets["GEMINI_API_KEY"]:
+        GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 except Exception:
     pass
+
+os.environ["GOOGLE_API_KEY"] = GEMINI_API_KEY
 
 # ---------------------------------------------------------
 # Helper Function: Process PDF
@@ -126,30 +127,28 @@ if uploaded_file:
             with st.chat_message("user"):
                 st.write(user_query)
 
-            if not GROQ_API_KEY:
-                st.error("Groq API Key missing.")
-            else:
-                with st.chat_message("assistant"):
-                    with st.spinner("Searching document context and generating answer..."):
-                        try:
-                            docs = st.session_state.retriever.invoke(user_query)
-                            context_text = "\n\n".join([doc.page_content for doc in docs])
+            with st.chat_message("assistant"):
+                with st.spinner("Searching document context and generating answer..."):
+                    try:
+                        llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", google_api_key=GEMINI_API_KEY)
+                        
+                        docs = st.session_state.retriever.invoke(user_query)
+                        context_text = "\n\n".join([doc.page_content for doc in docs])
 
-                            prompt = f"""
-                            You are a precise Enterprise AI Assistant. Read the context below carefully and give an accurate, direct answer to the user's question based strictly on this context. If the answer is not present, say so clearly.
+                        prompt = f"""
+                        You are a professional Enterprise AI Assistant. Answer the user's question based strictly on the provided context below.
+                        If the answer is not contained within the document context, state clearly that the information is not present in the document.
 
-                            Context:
-                            {context_text}
+                        Context:
+                        {context_text}
 
-                            Question:
-                            {user_query}
-                            """
+                        Question:
+                        {user_query}
+                        """
 
-                            llm = ChatGroq(model="llama-3.1-8b-instant", groq_api_key=GROQ_API_KEY)
-                            response = llm.invoke(prompt)
-                            answer = response.content
-
-                            st.write(answer)
-                            st.session_state.chat_history.append({"role": "assistant", "content": answer})
-                        except Exception as err:
-                            st.error(f"Error querying Groq API: {str(err)}")
+                        response = llm.invoke(prompt)
+                        answer = response.content
+                        st.write(answer)
+                        st.session_state.chat_history.append({"role": "assistant", "content": answer})
+                    except Exception as err:
+                        st.error(f"Error querying Gemini API: {str(err)}")
