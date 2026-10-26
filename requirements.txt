@@ -2,6 +2,5 @@ streamlit
 pypdf
 sentence-transformers
 chromadb
-transformers
-torch
-accelerate
+cohere
+langchain-cohere

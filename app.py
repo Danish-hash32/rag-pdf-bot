@@ -1,13 +1,12 @@
 import os
 import tempfile
 import streamlit as st
+import cohere
 
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
-from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
-from langchain_huggingface import HuggingFacePipeline
 
 # ---------------------------------------------------------
 # Page Configuration & Header
@@ -18,7 +17,7 @@ st.markdown("""
     <div style="background: linear-gradient(135deg, #0F172A, #1E293B); padding: 18px; border-radius: 12px; border: 1px solid #334155; text-align: center; margin-bottom: 20px;">
         <h2 style="color: #F8FAFC; margin: 0; font-family: sans-serif;">⚡ DocuMind AI</h2>
         <p style="color: #38BDF8; font-size: 13px; margin: 4px 0 0 0; font-weight: 500;">
-            Enterprise Document Intelligence Workspace
+            Enterprise Document Intelligence Workspace (Powered by Cohere)
         </p>
         <p style="color: #94A3B8; font-size: 12px; margin: 6px 0 0 0; font-weight: 600;">
             🚀 Developed by Muhammad Danish Haleem | BSAI Student, UOA Peshawar
@@ -33,40 +32,17 @@ st.sidebar.title("📌 System Overview")
 st.sidebar.markdown("👨‍💻 **Developer:** Muhammad Danish Haleem")
 st.sidebar.markdown("🎓 BSAI Student | University of Agriculture Peshawar")
 st.sidebar.markdown("---")
-st.sidebar.info("Running locally via Hugging Face. No API keys required!")
+st.sidebar.info("Running via Cohere API. Fast, accurate, and reliable document intelligence.")
 
 # ---------------------------------------------------------
-# Load Local Hugging Face LLM (Optimized for Speed & No Loops)
+# Configure Cohere API Client
 # ---------------------------------------------------------
-@st.cache_resource
-def load_local_llm():
-    model_id = "google/gemma-2-2b-it"
-    try:
-        tokenizer = AutoTokenizer.from_pretrained(model_id)
-        model = AutoModelForCausalLM.from_pretrained(
-            model_id, 
-            device_map="auto", 
-            torch_dtype="auto"
-        )
-        pipe = pipeline(
-            "text-generation",
-            model=model,
-            tokenizer=tokenizer,
-            max_new_tokens=90,         # Shorter length for faster response time
-            temperature=0.01,          # Precise answering
-            do_sample=False,           # Greedy decoding to avoid loops
-            repetition_penalty=1.2     # Prevents repeating sentences
-        )
-        return HuggingFacePipeline(pipeline=pipe)
-    except Exception:
-        model_id = "distilgpt2"
-        tokenizer = AutoTokenizer.from_pretrained(model_id)
-        model = AutoModelForCausalLM.from_pretrained(model_id)
-        pipe = pipeline("text-generation", model=model, tokenizer=tokenizer, max_new_tokens=90)
-        return HuggingFacePipeline(pipeline=pipe)
+COHERE_API_KEY = "215oD8n49yjDzOzsTtXP48JeeR9muDKmkoVsTRyl"
 
-with st.spinner("Loading local AI model (Takes a moment on first load)..."):
-    llm = load_local_llm()
+try:
+    co_client = cohere.Client(COHERE_API_KEY)
+except Exception as e:
+    st.error(f"⚠️ Cohere Client Initialization Error: {str(e)}")
 
 # ---------------------------------------------------------
 # Helper Function: Process PDF
@@ -86,7 +62,7 @@ def process_pdf(uploaded_file):
             st.error("⚠️ Unable to extract text. Please verify that the PDF is not an image-only scan.")
             return None
 
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=150)
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
         splits = text_splitter.split_documents(docs)
 
         embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
@@ -99,7 +75,7 @@ def process_pdf(uploaded_file):
             collection_name=collection_name
         )
         
-        return vectorstore.as_retriever(search_kwargs={"k": 2})
+        return vectorstore.as_retriever(search_kwargs={"k": 3})
 
     except Exception as e:
         if os.path.exists(tmp_path):
@@ -150,21 +126,31 @@ if uploaded_file:
                 st.write(user_query)
 
             with st.chat_message("assistant"):
-                with st.spinner("Searching document context and generating answer..."):
+                with st.spinner("Searching document context and generating precise answer..."):
                     try:
                         docs = st.session_state.retriever.invoke(user_query)
                         context_text = "\n\n".join([doc.page_content for doc in docs])
 
-                        formatted_prompt = f"Context:\n{context_text}\n\nQuestion: {user_query}\nAnswer:"
+                        prompt = f"""
+                        You are a professional Enterprise AI Assistant. Answer the user's question accurately based strictly on the provided document context.
+                        If the answer is not present in the context, state clearly that the information is not available in the document.
 
-                        response = llm.invoke(formatted_prompt)
+                        Document Context:
+                        {context_text}
+
+                        User Question:
+                        {user_query}
+                        """
+
+                        response = co_client.chat(
+                            model="command-r",
+                            message=prompt,
+                            temperature=0.1
+                        )
                         
-                        if "Answer:" in response:
-                            answer = response.split("Answer:")[-1].strip()
-                        else:
-                            answer = response.strip()
+                        answer = response.text.strip()
                         
                         st.write(answer)
                         st.session_state.chat_history.append({"role": "assistant", "content": answer})
                     except Exception as err:
-                        st.error(f"Error generating response: {str(err)}")
+                        st.error(f"Error querying Cohere API: {str(err)}")
