@@ -6,7 +6,9 @@ from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
-from langchain_google_genai import ChatGoogleGenerativeAI
+from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
+from langchain_huggingface import HuggingFacePipeline
+from langchain_core.prompts import PromptTemplate
 
 # ---------------------------------------------------------
 # Page Configuration & Header
@@ -32,12 +34,42 @@ st.sidebar.title("📌 System Overview")
 st.sidebar.markdown("👨‍💻 **Developer:** Muhammad Danish Haleem")
 st.sidebar.markdown("🎓 BSAI Student | University of Agriculture Peshawar")
 st.sidebar.markdown("---")
-st.sidebar.info("Upload any PDF document to perform instant semantic query retrieval and AI analysis.")
+st.sidebar.info("Running locally via Hugging Face. No API keys required!")
 
 # ---------------------------------------------------------
-# Direct API Key Configuration
+# Load Local Hugging Face LLM (Cached to run fast)
 # ---------------------------------------------------------
-GEMINI_API_KEY = "AQ.Ab8RN6JEqpAUjnF5rZBCRMer9MtdEnygcsQvS9mAVbTm9AZzw"
+@st.cache_resource
+def load_local_llm():
+    # Using a lightweight, fast open-source model that runs smoothly
+    model_id = "google/gemma-2-2b-it" # Or "HuggingFaceH4/zephyr-7b-beta" / "distilgpt2"
+    try:
+        tokenizer = AutoTokenizer.from_pretrained(model_id)
+        model = AutoModelForCausalLM.from_pretrained(
+            model_id, 
+            device_map="auto", 
+            load_in_8bit=False, # Set to True if memory is low
+            torch_dtype="auto"
+        )
+        pipe = pipeline(
+            "text-generation",
+            model=model,
+            tokenizer=tokenizer,
+            max_new_tokens=512,
+            temperature=0.3,
+            do_sample=True
+        )
+        return HuggingFacePipeline(pipeline=pipe)
+    except Exception:
+        # Fallback to a smaller ultra-light model if resources are restricted
+        model_id = "distilgpt2"
+        tokenizer = AutoTokenizer.from_pretrained(model_id)
+        model = AutoModelForCausalLM.from_pretrained(model_id)
+        pipe = pipeline("text-generation", model=model, tokenizer=tokenizer, max_new_tokens=200)
+        return HuggingFacePipeline(pipeline=pipe)
+
+with st.spinner("Loading local AI model (Takes a moment on first load)..."):
+    llm = load_local_llm()
 
 # ---------------------------------------------------------
 # Helper Function: Process PDF
@@ -123,28 +155,26 @@ if uploaded_file:
             with st.chat_message("assistant"):
                 with st.spinner("Searching document context and generating answer..."):
                     try:
-                        llm = ChatGoogleGenerativeAI(
-                            model="gemini-1.5-flash", 
-                            google_api_key=GEMINI_API_KEY
-                        )
-                        
                         docs = st.session_state.retriever.invoke(user_query)
                         context_text = "\n\n".join([doc.page_content for doc in docs])
 
-                        prompt = f"""
-                        You are a professional Enterprise AI Assistant. Answer the user's question based strictly on the provided context below.
-                        If the answer is not contained within the document context, state clearly that the information is not present in the document.
+                        template = """Use the following pieces of context to answer the question at the end. If you don't know the answer, just say that you don't know.
 
                         Context:
-                        {context_text}
+                        {context}
 
-                        Question:
-                        {user_query}
-                        """
+                        Question: {question}
+                        Answer:"""
+                        
+                        prompt = PromptTemplate(template=template, input_variables=["context", "question"])
+                        formatted_prompt = prompt.format(context=context_text, question=user_query)
 
-                        response = llm.invoke(prompt)
-                        answer = response.content
+                        response = llm.invoke(formatted_prompt)
+                        
+                        # Clean up output if pipeline repeats prompt
+                        answer = response.split("Answer:")[-1].strip() if "Answer:" in response else response
+                        
                         st.write(answer)
                         st.session_state.chat_history.append({"role": "assistant", "content": answer})
                     except Exception as err:
-                        st.error(f"Error querying Gemini API: {str(err)}")
+                        st.error(f"Error generating response: {str(err)}")
