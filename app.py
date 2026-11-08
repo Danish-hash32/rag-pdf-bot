@@ -19,6 +19,9 @@ st.markdown("""
         <p style="color: #38BDF8; font-size: 13px; margin: 4px 0 0 0; font-weight: 500;">
             Enterprise Document Intelligence Workspace
         </p>
+        <p style="color: #94A3B8; font-size: 12px; margin: 6px 0 0 0; font-weight: 600;">
+            🚀 Developed by Muhammad Danish Haleem
+        </p>
     </div>
 """, unsafe_allow_html=True)
 
@@ -26,6 +29,7 @@ st.markdown("""
 # Sidebar
 # ---------------------------------------------------------
 st.sidebar.title("📌 System Overview")
+st.sidebar.markdown("👨‍💻 **Developer:** Muhammad Danish Haleem")
 st.sidebar.markdown("---")
 st.sidebar.info("Document Intelligence System is ready.")
 
@@ -33,7 +37,6 @@ st.sidebar.info("Document Intelligence System is ready.")
 # Configure OpenRouter LLM via LangChain
 # ---------------------------------------------------------
 OPENROUTER_API_KEY = "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"
-
 try:
     llm = ChatOpenAI(
         openai_api_key=OPENROUTER_API_KEY,
