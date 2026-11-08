@@ -17,10 +17,7 @@ st.markdown("""
     <div style="background: linear-gradient(135deg, #0F172A, #1E293B); padding: 18px; border-radius: 12px; border: 1px solid #334155; text-align: center; margin-bottom: 20px;">
         <h2 style="color: #F8FAFC; margin: 0; font-family: sans-serif;">⚡ DocuMind AI</h2>
         <p style="color: #38BDF8; font-size: 13px; margin: 4px 0 0 0; font-weight: 500;">
-            Enterprise Document Intelligence Workspace (Powered by OpenRouter)
-        </p>
-        <p style="color: #94A3B8; font-size: 12px; margin: 6px 0 0 0; font-weight: 600;">
-            🚀 Developed by Muhammad Danish Haleem | BSAI Student, UOA Peshawar
+            Enterprise Document Intelligence Workspace
         </p>
     </div>
 """, unsafe_allow_html=True)
@@ -29,10 +26,8 @@ st.markdown("""
 # Sidebar
 # ---------------------------------------------------------
 st.sidebar.title("📌 System Overview")
-st.sidebar.markdown("👨‍💻 **Developer:** Muhammad Danish Haleem")
-st.sidebar.markdown("🎓 BSAI Student | University of Agriculture Peshawar")
 st.sidebar.markdown("---")
-st.sidebar.info("Running via OpenRouter API & LangChain. Fast and reliable.")
+st.sidebar.info("Document Intelligence System is ready.")
 
 # ---------------------------------------------------------
 # Configure OpenRouter LLM via LangChain
@@ -47,7 +42,7 @@ try:
         temperature=0.1
     )
 except Exception as e:
-    st.error(f"⚠️ OpenRouter Initialization Error: {str(e)}")
+    st.error(f"⚠️ Initialization Error: {str(e)}")
 
 # ---------------------------------------------------------
 # Helper Function: Process PDF
@@ -153,4 +148,4 @@ if uploaded_file:
                         st.write(answer)
                         st.session_state.chat_history.append({"role": "assistant", "content": answer})
                     except Exception as err:
-                        st.error(f"Error querying OpenRouter API: {str(err)}")
+                        st.error(f"Error querying API: {str(err)}")
