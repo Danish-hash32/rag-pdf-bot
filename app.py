@@ -36,7 +36,7 @@ st.sidebar.info("Document Intelligence System is ready.")
 # ---------------------------------------------------------
 # Configure OpenRouter LLM via LangChain
 # ---------------------------------------------------------
-OPENROUTER_API_KEY = "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"
+OPENROUTER_API_KEY = "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"
 try:
     llm = ChatOpenAI(
         openai_api_key=OPENROUTER_API_KEY,
